@@ -1,0 +1,28 @@
+name: KukuAI Daily
+
+on:
+  # 定时签到留给 fork 后自行开启（取消下面两行注释即可）
+  # schedule:
+  #   - cron: '15 0 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: kukuai-daily
+  cancel-in-progress: false
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run checkin
+        env:
+          KUKU_COOKIES: ${{ secrets.KUKU_COOKIES }}
+          KUKU_STOKEN: ${{ secrets.KUKU_STOKEN }}
+          KUKU_TOKENS: ${{ secrets.KUKU_TOKENS }}
+          QYWX_TOKEN: ${{ secrets.QYWX_TOKEN }}
+          PLUSPLUS_TOKEN: ${{ secrets.PLUSPLUS_TOKEN }}
+        run: python kuku_daily.py

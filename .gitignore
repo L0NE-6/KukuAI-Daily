@@ -1,0 +1,24 @@
+# ---- 运行时生成的凭据 / 状态：含真实 Cookie，绝不提交 ----
+.kuku_stoken.json
+kuku_tokens.json
+storage.json
+*accounts*.json
+
+# ---- 密钥 / 环境变量 ----
+.env
+.env.*
+*.pem
+*.key
+*.jks
+*.p12
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---- 杂项 ----
+*.log
+*.bak
+.DS_Store
