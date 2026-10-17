@@ -10,16 +10,14 @@ KukuAI（百度文库 · 库库 AI / GenFlowPro）每日签到 —— 单文件�
 前置条件（重要）：
   · 业务接口需要一个按产品签发的会话令牌（STOKEN，作用域 genflowpro）。
     网页登录拿到的 Cookie 里那份是通行证级的，业务接口会判未登录（errno=-6）。
-    换发该令牌要用到官方客户端的本地引擎 genflowengine.dll —— 所以
-    「换发」这一步只能在装了库库 AI 客户端的 Windows 上完成；
-    换好后的令牌可以直接复制到 Linux / 青龙使用（有效期内无需重新换发）。
+    本脚本用**纯算法**换发（复刻官方引擎的 MD5 签名）—— 不再依赖
+    genflowengine.dll，Windows / Linux / 青龙都能直接换发。
 
 环境变量：
   KUKU_COOKIES     必填。Cookie 头（`BDUSS=…; PTOKEN=…`）、Cookie 编辑器 JSON、
                    或 {"BDUSS":"…","PTOKEN":"…"} 对象都认。
   KUKU_STOKEN      可选。已换发好的 genflowpro 会话令牌；没有则本机尝试自动换发。
   KUKU_TOKENS      可选。多账号，换行或 & 分隔，每条形如 `备注|BDUSS|PTOKEN[|STOKEN]`。
-  KUKU_ENGINE_DLL  可选。显式指定 genflowengine.dll 路径（默认自动定位）。
   KUKU_PROXY       可选。http(s)/socks5 代理，例如 http://127.0.0.1:7890
   KUKU_NO_NOTIFY   可选。设 1 关闭推送。
 
@@ -29,12 +27,13 @@ KukuAI（百度文库 · 库库 AI / GenFlowPro）每日签到 —— 单文件�
 用法：
   python kuku_daily.py            # 全部账号
   python kuku_daily.py --only 1   # 只跑第 1 个
-  python kuku_daily.py --token    # 只尝试换发并打印令牌（Windows）
+  python kuku_daily.py --token    # 只尝试换发并打印令牌（任意平台）
 
 依赖：Python 3.8+，仅标准库。
 """
 
 import json
+import hashlib
 import os
 import re
 import sys
@@ -43,12 +42,21 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+try:
+    sys.stdout.reconfigure(errors="replace")
+except Exception:
+    pass
+
 BASE_URL = "https://kuku.baidu.com"
 PASSPORT_AUTH_URL = "https://passport.baidu.com/v3/login/api/auth"
 WEB_QUERY = ("clienttype=400&app_id=123971023&web=1&channel=chunlei&version=1.4.4")
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36")
 ENGINE_DLL_NAME = "genflowengine.dll"
+# 官方引擎内置签名密钥（真实 DLL 与抓包双重验证）
+ENGINE_SIGN_KEY = "34868b316de55815273b2616954b0286"
+# passport 换发接口对客户端引擎 UA 敏感，浏览器 UA 不可靠
+ENGINE_UA = "genflow;1.6.5;PC;PC-Windows;10.0.26200;GenFlowPro"
 DAILY_TASKS = (("LOGIN", "每日登录"), ("CHAT", "完成一次对话"))
 STOKEN_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".kuku_stoken.json")
 MIN_BDUSS_LEN = 8
@@ -237,41 +245,21 @@ def find_engine_dll():
 
 
 def build_auth_param(bduss, ptoken):
-    """调用官方客户端引擎构造带签名的登录参数体。"""
-    if sys.platform != "win32":
-        raise RuntimeError("换发会话令牌需要在装有库库 AI 客户端的 Windows 上运行；"
-                           "请在这类机器上执行 `--token` 拿到 KUKU_STOKEN 后再填到本机/青龙")
-    path = find_engine_dll()
-    if not path:
-        raise RuntimeError("没有找到 %s：请确认已安装库库 AI 客户端，"
-                           "或用 KUKU_ENGINE_DLL 指定其路径" % ENGINE_DLL_NAME)
-    import ctypes
-    lib = ctypes.CDLL(path)
-    lib.genflow_engine_get_login_auth_param.restype = ctypes.c_void_p
-    lib.genflow_engine_get_login_auth_param.argtypes = [
-        ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(ctypes.c_int)]
-    lib.genflow_engine_free.restype = ctypes.c_int
-    lib.genflow_engine_free.argtypes = [ctypes.c_void_p]
-    out_len = ctypes.c_int(0)
-    ptr = lib.genflow_engine_get_login_auth_param(
-        bduss.encode("utf-8"), ptoken.encode("utf-8"), ctypes.byref(out_len))
-    if not ptr or out_len.value <= 0:
-        raise RuntimeError("客户端引擎没有返回登录参数（BDUSS / PTOKEN 可能已失效）")
-    try:
-        text = ctypes.string_at(ptr, out_len.value).decode("utf-8", "replace").strip()
-    finally:
-        lib.genflow_engine_free(ptr)
-    if not text:
-        raise RuntimeError("客户端引擎返回了空参数")
-    return text
+    """构造 passport 换发用的签名参数体（复刻官方引擎 MD5 签名，无需 DLL）。"""
+    signed = ("appid=1&bduss=%s&ptoken=%s&return_type=1&tpl=genflowpro"
+              "&tpl_list=genflowpro|netdisk&sign_key=%s"
+              % (bduss, ptoken, ENGINE_SIGN_KEY))
+    signature = hashlib.md5(signed.encode("utf-8")).hexdigest()
+    return ("appid=1&bduss=%s&ptoken=%s&return_type=1&tpl=genflowpro"
+            "&tpl_list=genflowpro|netdisk&sig=%s" % (bduss, ptoken, signature))
 
 
 def exchange_stoken(bduss, ptoken, opener=None):
     """用 BDUSS + PTOKEN 换发 genflowpro 作用域的 STOKEN。"""
     body = build_auth_param(bduss, ptoken).encode("utf-8")
     headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": USER_AGENT,
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "User-Agent": ENGINE_UA,
         "Referer": BASE_URL + "/genflowpro",
         "Origin": BASE_URL,
         "Accept-Language": "zh-CN,zh;q=0.9",
@@ -324,7 +312,7 @@ def key_of(bduss):
 
 
 def resolve_stoken(bduss, ptoken, manual, opener=None):
-    """令牌优先级：环境变量 > 本机缓存 > 本机换发（仅 Windows）。"""
+    """令牌优先级：环境变量 > 本机缓存 > 本机换发（纯签名，任意平台）。"""
     if manual:
         return manual, "配置"
     cache = load_cache()

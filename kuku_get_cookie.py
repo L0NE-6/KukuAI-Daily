@@ -5,16 +5,16 @@ KukuAI 登录态获取工具
 
 三条路径，按场景挑一条：
 
-  python kuku_get_cookie.py                 # ① 读本机库库 AI 客户端登录态（Windows，客户端需先退出）
+  python kuku_get_cookie.py                 # ① 读本机库库 AI 客户端登录态（复制副本读，客户端开着也行）
   python kuku_get_cookie.py --paste         # ② 手动粘贴 Cookie（浏览器开发者工具复制）
-  python kuku_get_cookie.py --exchange      # ③ 换发会话令牌（Windows，可自动定位客户端引擎）
+  python kuku_get_cookie.py --exchange      # ③ 换发会话令牌（纯签名，任意平台，无需客户端）
 
 输出：
   · KUKU_COOKIES=…     直接填环境变量
   · KUKU_STOKEN=…      换发成功时输出（Linux / 青龙直接填这一项即可长期使用）
 
 说明：会话令牌按产品签发，网页登录 Cookie 里那份是通行证级的，业务接口不认；
-      本工具在有官方客户端引擎的 Windows 上把它换出来，再拿到别处用。
+      本工具用官方引擎同款 MD5 签名直接换发（不再依赖 genflowengine.dll）。
 """
 
 import argparse
@@ -22,14 +22,20 @@ import json
 import os
 import re
 import sqlite3
+import shutil
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 
+try:
+    sys.stdout.reconfigure(errors="replace")
+except Exception:
+    pass
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
-    from kuku_daily import (USER_AGENT, BASE_URL, exchange_stoken, parse_cookie,
-                            find_engine_dll, proxy_opener)
+    from kuku_daily import USER_AGENT, BASE_URL, exchange_stoken, parse_cookie, proxy_opener
 except Exception as e:
     print("❌ 需要与 kuku_daily.py 放在同一目录：%s" % e)
     sys.exit(1)
@@ -50,24 +56,29 @@ def client_cookie_db():
 
 
 def read_from_client():
-    """从客户端 SQLite 读取明文 Cookie（该库不是 Chromium 加密存储）。"""
+    """从客户端 SQLite 读取明文 Cookie（复制副本再读，客户端开着也能读）。"""
     path = client_cookie_db()
     if not path:
         print("❌ 没找到客户端 Cookie 数据库。")
         print("   确认已安装并登录过库库 AI 客户端，或用 --paste 手动粘贴。")
         return None
+    tmpdir = tempfile.mkdtemp(prefix="kuku-cookie-")
+    db_copy = os.path.join(tmpdir, "Cookies")
+    conn = None
     try:
-        conn = sqlite3.connect("file:%s?mode=ro" % urllib.parse.quote(path), uri=True)
-    except Exception as e:
-        print("❌ 打不开 Cookie 数据库（客户端可能正在运行，请先完全退出再试）：%s" % e)
-        return None
-    try:
+        shutil.copy2(path, db_copy)
+        for suffix in ("-wal", "-shm"):
+            if os.path.isfile(path + suffix):
+                shutil.copy2(path + suffix, db_copy + suffix)
+        conn = sqlite3.connect(db_copy)
         rows = conn.execute("SELECT host_key, name, value FROM cookies").fetchall()
     except Exception as e:
         print("❌ 读取 Cookie 失败：%s" % e)
         return None
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
+        shutil.rmtree(tmpdir, ignore_errors=True)
     picked = {}
     for host, name, value in rows:
         if not value:
@@ -114,16 +125,11 @@ def main():
         print("KUKU_STOKEN=%s" % args.stoken)
         return 0
     if not args.exchange:
-        print("（需要会话令牌时：在同一台 Windows 上加 --exchange 运行本工具）")
+        print("（需要会话令牌时：加 --exchange 运行本工具，纯算法换发，任意平台都可）")
         return 0
     if not ptoken:
         print("❌ 换发需要 PTOKEN，但当前 Cookie 里没有。请重新复制完整 Cookie。")
         return 1
-    engine = find_engine_dll()
-    if not engine:
-        print("❌ 没找到客户端引擎 %s，无法换发。" % "genflowengine.dll")
-        return 1
-    print("🔑 找到引擎：%s" % engine)
     try:
         stoken = exchange_stoken(bduss, ptoken, proxy_opener())
     except Exception as e:
