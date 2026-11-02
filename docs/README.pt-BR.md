@@ -106,6 +106,10 @@ O README anterior registra 13 testes offline que cobrem análise de Cookie, cabe
 
 Cookie, STOKEN e a lista de contas são lidos apenas de variáveis de ambiente ou do cache local de tokens. Os logs mostram somente fragmentos mascarados do BDUSS. Não publique `.kuku_stoken.json`, valores de variáveis de ambiente ou Cookies completos em repositórios, Issues, logs do Actions ou capturas de tela.
 
+## Limites de uso e redistribuição
+
+O repositório oficial, os scripts, as instruções de implantação e as Releases permanecem gratuitos e públicos. Sem autorização escrita explícita do autor, não empacote este projeto como recurso pago, serviço de implantação paga ou serviço de atualização paga; não remova a atribuição para alegar autoria original; não se passe pelo autor; e não use a identidade, o nome, o avatar ou os QR codes de pagamento do autor para sugerir endosso oficial. Também não republique o projeto em contas, grupos, canais ou plataformas pagas sem relação com ele para ganhar seguidores, desviar tráfego ou revender. Em caso de violação, o autor pode solicitar a remoção e pode pausar atualizações, arquivar ou excluir o repositório. Consulte as regras completas em [NOTICE.md](../NOTICE.md).
+
 ## Links
 
 - [Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)
