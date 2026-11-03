@@ -214,6 +214,7 @@ python kuku_get_cookie.py --paste --exchange
 </details>
 
 ## 📦 版本与发布
+- 当前发布版：`v1.2.1`（2026-11-04，文档发行版；脚本逻辑仍为 `v1.2.0`）。
 
 - 当前仓库版本：`v1.2.0`。
 - Release 页：[L0NE-6/KukuAI-Daily Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)。
