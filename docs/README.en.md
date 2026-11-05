@@ -1,121 +1,147 @@
 # 🧩 KukuAI Daily
 
-**Daily LOGIN and CHAT reward collection for Kuku AI (Baidu Wenku GenFlowPro), with multi-account, Qinglong, and GitHub Actions support.**
+**A single-file runner for the Kuku AI 30-day check-in, with multi-account, Qinglong, and GitHub Actions support.**
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
-> Complete Chinese documentation: [../README.md](../README.md)
+> Full Chinese documentation: [../README.md](../README.md)
 
 ## Overview
 
-KukuAI Daily signs in to the Kuku AI free-points activity and completes the daily conversation task through the service APIs. A successful run returns the reward result for each account. If the daily reward was already collected, the activity API returns `reward_point=0`; the script reports that as an idempotent "already collected" state instead of claiming new points.
+KukuAI Daily runs the Kuku AI 30-day activity by calling the configuration, activity homepage, JS token, and sign-in endpoints in order. The legacy free-points tasks are available only with an explicit `--legacy-freepoint` flag.
 
-The business API expects a `genflowpro` session token. A web Cookie alone may still allow generic account queries, but the activity endpoints require the issued session token. The current `v1.2.0` implementation reproduces the official engine's MD5 signature and exchanges the token from `BDUSS` plus `PTOKEN` without loading `genflowengine.dll`. This works on Windows, Linux, Docker, and Qinglong.
+The default flow never falls back to the legacy API. A sign-in succeeds only when the response contains `errno=0` and a boolean `data.signed_today=true`. `errno=10152` is a neutral already-signed result; `8001` and `8002` are upstream risk-control failures.
 
-## Core capabilities
+## Request flow
 
-- Collects the daily `LOGIN` and `CHAT` tasks.
-- Handles repeated daily runs through the activity's idempotent response.
-- Supports one account with `KUKU_COOKIES` and multiple accounts with `KUKU_TOKENS`.
-- Resolves credentials in this order: configured STOKEN, local cache, cross-platform MD5-signature exchange.
-- Masks BDUSS values in logs.
-- Sends optional WeCom or PushPlus notifications.
-- Uses only the Python standard library.
-
-## Credential preparation
-
-```bash
-python kuku_get_cookie.py
-python kuku_get_cookie.py --paste
-python kuku_get_cookie.py --exchange
-python kuku_get_cookie.py --paste --exchange
-python kuku_daily.py --token
+```text
+GET  /act/api/conf?conf_key=kukuSignConf
+GET  /act/v2/kukuai30/homepage?tid=<activityTid>
+GET  /operation/activitys/api/getJsToken
+POST /act/v2/kukuai30/signin?tid=<activityTid>&jsToken=<token>&aid=15459
 ```
 
-The default `--exchange` path reads the local desktop Cookie database first. With `--paste --exchange`, paste a complete Cookie containing `BDUSS` and `PTOKEN`; the tool then performs the pure-signature exchange on any platform. `python kuku_daily.py --token` exchanges tokens for already configured accounts. The tool prints a `KUKU_STOKEN=...` value.
+The Referer is fixed to:
 
-## Minimum Qinglong setup
+```text
+https://kuku.baidu.com/operation/activitys/kukuPcSignAct/main
+```
 
-1. Upload `kuku_daily.py` to a Qinglong script directory.
-2. Add `KUKU_COOKIES` and the generated `KUKU_STOKEN` as environment variables.
-3. Create a scheduled task from the script list so the command is `task kuku_daily.py`.
+## Two separate tokens
+
+| Token | Source | Used by |
+| :--- | :--- | :--- |
+| Web STOKEN | `STOKEN` inside the full browser Cookie | The 30-day check-in only |
+| Business STOKEN | `KUKU_STOKEN`, per-account `business_stoken`, cache, or exchange | The explicit legacy free-points flow only |
+
+`KUKU_STOKEN` never overrides the web `STOKEN`. If the Cookie has no web `STOKEN`, the default flow fails with a request to export the full Cookie again. It does not silently use the business token.
+
+## Single account
+
+```text
+KUKU_COOKIES=BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...
+```
+
+`KUKU_STOKEN` is optional and is read only by `--legacy-freepoint`:
+
+```text
+KUKU_STOKEN=<business-stoken>
+```
+
+## Multiple accounts
+
+The recommended format is a JSON array. Each item stores the complete Cookie separately from the optional business token:
+
+```json
+[
+  {
+    "name": "main",
+    "cookie": "BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "business_stoken": ""
+  },
+  {
+    "name": "second",
+    "cookie": "BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "business_stoken": ""
+  }
+]
+```
+
+A line-oriented format is also accepted:
+
+```text
+main|BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...|optional-business-stoken
+second|BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...|optional-business-stoken
+```
+
+The old positional format `name|BDUSS|PTOKEN[|business-stoken]` is still parsed for compatibility, but it does not contain a web STOKEN or the other browser fields. It is therefore suitable only for explicit `--legacy-freepoint`; the default 30-day flow reports the missing web STOKEN.
+
+## Qinglong and GitHub Actions
+
+1. Upload `kuku_daily.py`; upload `kuku_get_cookie.py` when you need to refresh client Cookies.
+2. Set `KUKU_COOKIES` for one account or `KUKU_TOKENS` for multiple accounts.
+3. Run `task kuku_daily.py` on a schedule.
 
 ```cron
 15 8 * * *
 ```
 
-```bash
-task kuku_daily.py
-```
-
-For multiple accounts, set `KUKU_TOKENS` instead of the single-account variables:
-
-```text
-main|BDUSS_VALUE|PTOKEN_VALUE|STOKEN_VALUE
-second|BDUSS_VALUE|PTOKEN_VALUE|STOKEN_VALUE
-```
-
-Use newlines or `&` between accounts. Each item uses `remark|BDUSS|PTOKEN[|STOKEN]`.
-
-## Minimum GitHub Actions setup
-
-Add these repository Secrets under **Settings → Secrets and variables → Actions**:
+For GitHub Actions, add:
 
 | Secret | Required | Purpose |
 | :--- | :---: | :--- |
-| `KUKU_COOKIES` | for one account | Cookie for one account |
-| `KUKU_STOKEN` | optional | Session token paired with the Cookie |
-| `KUKU_TOKENS` | for multi-account | Multi-account entries; takes precedence |
+| `KUKU_COOKIES` | one account | Complete web Cookie including web `STOKEN` |
+| `KUKU_TOKENS` | multiple accounts | JSON array or line format |
+| `KUKU_STOKEN` | optional | Legacy business STOKEN for one-account mode only |
 | `QYWX_TOKEN` | optional | WeCom bot key |
 | `PLUSPLUS_TOKEN` | optional | PushPlus token |
 
-The bundled workflow is manual-only by default. Run **Actions → KukuAI Daily → Run workflow** for the first validation. To enable the schedule, uncomment the two `schedule:` lines in `.github/workflows/daily.yml`:
-
-```yaml
-schedule:
-  - cron: '15 0 * * *'
-```
-
-The cron expression uses UTC. `15 0 * * *` means 08:15 Beijing time. The Ubuntu runner can perform the pure-signature exchange. `KUKU_STOKEN` may be omitted; `KUKU_COOKIES` is exchanged at run time and cached.
-
-## Key environment variables
-
-| Variable | Required | Description |
-| :--- | :---: | :--- |
-| `KUKU_COOKIES` | for one account | Cookie header, Cookie-editor JSON, or an object containing `BDUSS` and `PTOKEN` |
-| `KUKU_STOKEN` | optional | Issued `genflowpro` session token |
-| `KUKU_TOKENS` | for multi-account | Multi-account list in `remark\|BDUSS\|PTOKEN[\|STOKEN]` format |
-| `KUKU_PROXY` | optional | HTTP(S) or SOCKS5 proxy URL |
-| `KUKU_NO_NOTIFY` | optional | Set to `1` to disable notifications |
-| `QYWX_TOKEN` | optional | WeCom bot key; `WECHAT_WEBHOOK` is also accepted |
-| `PLUSPLUS_TOKEN` | optional | PushPlus token |
-
-## Command-line options
+## Command line
 
 | Option | Effect |
 | :--- | :--- |
-| none | Run the daily tasks for every configured account |
-| `--only N` | Run account number N only |
-| `--token` | Exchange and print session tokens without checking in |
+| none | Run the 30-day check-in for every configured account |
+| `--only N` | Run account N only |
+| `--legacy-freepoint` | Run the legacy free-points tasks with a business token |
+| `--token` | Exchange and print a legacy business token without checking in |
+| `--version` | Print the script version |
 
-## Verification scope
+## Success semantics
 
-The previous README records 13 offline self-tests covering Cookie parsing, request headers, credential precedence, success, idempotent responses, expired sessions, HTTP failures, multi-account parsing, and log masking. Version `v1.2.0` replaces the DLL call with the pure MD5-signature exchange. This repository does not include a real-account, end-to-end online log for that new exchange path, so it does not claim online acceptance.
+| Upstream result | Local result |
+| :--- | :--- |
+| `errno=0`, `data.signed_today=true` | Claimed successfully |
+| Homepage `signed_today=true` | Neutral, already signed |
+| `errno=10152` | Neutral, already signed |
+| `errno=8001` / `8002` | Risk-control failure |
+| Missing or non-boolean `signed_today` | Failure |
+
+The process returns success when at least one account reaches a claimed or neutral state. If every account fails, it returns a non-zero exit code.
+
+## Verification
+
+```powershell
+python -m unittest discover -s tests -v
+python -m pytest -q
+python -m py_compile kuku_daily.py kuku_get_cookie.py tests\_loader.py tests\test_kuku_contract.py
+ruff check .
+```
+
+Tests use fake responses only. They cover the four-step flow, strict success checks, 10152, 8001/8002, explicit legacy mode, web/business STOKEN isolation, full multi-account Cookie fields, masking, and notifications. See [PROTOCOL.md](PROTOCOL.md).
 
 ## Privacy
 
-Your Cookie, STOKEN, and account list are read from environment variables or the local token cache. Logs only display masked BDUSS fragments. Never publish `.kuku_stoken.json`, environment values, or full Cookie data in a repository, Issue, Actions log, or screenshot.
+Logs mask BDUSS values. Never publish `.kuku_stoken.json`, full Cookies, web/business STOKEN values, or account export files in a repository, Issue, Actions log, or screenshot.
 
 ## Usage and redistribution
 
-The official repository, scripts, deployment instructions, and releases are and remain free. Without explicit written permission, do not package this project as a paid resource, paid deployment service, or paid update service; do not remove attribution and claim the work as original; do not impersonate the author; and do not use the author's identity, name, avatar, or payment QR codes to imply official endorsement. Do not repost the project through unrelated accounts, groups, channels, or paid platforms for follower growth, traffic diversion, or resale. Violations may lead to a takedown request, and the author may pause updates or archive or delete the repository. Read the full [NOTICE.md](../NOTICE.md).
+The official repository, scripts, deployment instructions, and releases remain free. Without explicit written permission, do not package this project as a paid resource or paid deployment service, remove attribution, impersonate the author, or use the author's identity or payment QR codes to imply official endorsement. Violations may lead to takedown requests and the author may pause or archive the project. See [NOTICE.md](../NOTICE.md).
 
-## Links
+## Version
 
-- [Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)
-- [Issues](https://github.com/L0NE-6/KukuAI-Daily/issues)
-- [Chinese README](../README.md)
-- [Changelog](../CHANGELOG.md)
+- Repository version: `v1.3.0`
+- Release status: pending the main release process
+- Changelog: [CHANGELOG.md](../CHANGELOG.md)
 
 ## Disclaimer
 

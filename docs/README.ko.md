@@ -1,6 +1,6 @@
 # 🧩 KukuAI Daily
 
-**Kuku AI(Baidu Wenku GenFlowPro)의 매일 LOGIN 및 CHAT 보상을 수집하는 멀티 계정·Qinglong·GitHub Actions 자동화입니다.**
+**Kuku AI 30일 체크인을 실행하는 단일 파일 스크립트입니다. 멀티 계정, Qinglong, GitHub Actions를 지원합니다.**
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
@@ -8,114 +8,136 @@
 
 ## 개요
 
-KukuAI Daily는 Kuku AI 무료 포인트 활동에서 매일 로그인 보상과 대화 작업 보상을 받습니다. 성공하면 계정별 실제 결과를 출력합니다. 당일 보상을 이미 받았다면 API가 `reward_point=0`을 반환하며, 스크립트는 이를 새 보상으로 오인하지 않고 멱등적인 "오늘 이미 수령" 상태로 표시합니다.
+KukuAI Daily는 활동 설정, 활동 홈페이지, JS 토큰, 실제 체크인 API를 순서대로 호출합니다. 기존 freepoint 작업은 `--legacy-freepoint`를 명시한 경우에만 실행되며 자동으로 폴백하지 않습니다.
 
-비즈니스 API에는 `genflowpro` 범위의 세션 토큰이 필요합니다. 웹 Cookie만으로는 일반 계정 조회가 될 수 있어도 활동 API는 로그인되지 않은 상태로 판단합니다. 현재 `v1.2.0`은 공식 엔진의 MD5 서명을 재현하여 `BDUSS`와 `PTOKEN`으로 토큰을 교환하며 `genflowengine.dll`을 로드하지 않습니다. Windows, Linux, Docker, Qinglong에서 실행할 수 있습니다.
+`errno=0`과 불리언 `data.signed_today=true`가 모두 확인되어야 성공입니다. `errno=10152`는 오늘 이미 체크인된 중립 상태이고, `8001` / `8002`는 업스트림 위험 제어 실패입니다.
 
-## 핵심 기능
+## 요청 흐름
 
-- 매일 `LOGIN` 및 `CHAT` 작업을 수집합니다.
-- API의 멱등 응답을 올바르게 처리합니다.
-- 단일 계정은 `KUKU_COOKIES`, 멀티 계정은 `KUKU_TOKENS`를 사용합니다.
-- 설정된 STOKEN, 로컬 캐시, 크로스 플랫폼 MD5 서명 교환 순서로 자격 증명을 확인합니다.
-- 로그에서 BDUSS를 마스킹합니다.
-- 선택적으로 WeCom 및 PushPlus 알림을 보냅니다.
-- Python 표준 라이브러리만 사용합니다.
-
-## 자격 증명 준비
-
-```bash
-python kuku_get_cookie.py
-python kuku_get_cookie.py --paste
-python kuku_get_cookie.py --exchange
-python kuku_get_cookie.py --paste --exchange
-python kuku_daily.py --token
+```text
+GET  /act/api/conf?conf_key=kukuSignConf
+GET  /act/v2/kukuai30/homepage?tid=<activityTid>
+GET  /operation/activitys/api/getJsToken
+POST /act/v2/kukuai30/signin?tid=<activityTid>&jsToken=<token>&aid=15459
 ```
 
-기본 `--exchange`는 로컬 데스크톱 Cookie 데이터베이스를 읽습니다. `--paste --exchange`에서는 `BDUSS`와 `PTOKEN`이 포함된 전체 Cookie를 붙여넣고 어느 플랫폼에서나 순수 서명 교환을 실행할 수 있습니다. `python kuku_daily.py --token`은 설정된 계정의 토큰을 교환합니다. 성공하면 `KUKU_STOKEN=...` 값이 출력됩니다.
+Referer는 항상 다음과 같습니다.
 
-## 최소 Qinglong 설정
+```text
+https://kuku.baidu.com/operation/activitys/kukuPcSignAct/main
+```
 
-1. `kuku_daily.py`를 Qinglong 스크립트 디렉터리에 업로드합니다.
-2. 환경 변수 `KUKU_COOKIES`와 교환한 `KUKU_STOKEN`을 추가합니다.
-3. 스크립트 목록에서 예약 작업을 만들고 명령을 `task kuku_daily.py`로 설정합니다.
+## 두 종류의 STOKEN
+
+| 구분 | 출처 | 사용 |
+| :--- | :--- | :--- |
+| Web STOKEN | 전체 Cookie 내부의 `STOKEN` | 30일 체크인 전용 |
+| Business STOKEN | `KUKU_STOKEN`, 멀티 계정의 `business_stoken`, 캐시 또는 교환 결과 | `--legacy-freepoint` 전용 |
+
+`KUKU_STOKEN`은 Web STOKEN을 덮어쓰지 않습니다. Cookie에 Web STOKEN이 없으면 기본 흐름은 전체 Cookie를 다시 내보내라는 오류로 종료하며 Business STOKEN으로 대체하지 않습니다.
+
+## 단일 계정
+
+```text
+KUKU_COOKIES=BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...
+```
+
+기존 freepoint용 Business STOKEN은 별도로 설정합니다.
+
+```text
+KUKU_STOKEN=<business-stoken>
+```
+
+## 멀티 계정
+
+JSON 배열을 권장합니다. 전체 Cookie는 `cookie`, 기존 freepoint 토큰은 `business_stoken`에 분리합니다.
+
+```json
+[
+  {
+    "name": "main",
+    "cookie": "BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "business_stoken": ""
+  },
+  {
+    "name": "second",
+    "cookie": "BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "business_stoken": ""
+  }
+]
+```
+
+줄 형식도 지원합니다.
+
+```text
+main|BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...|optional-business-stoken
+second|BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...|optional-business-stoken
+```
+
+기존 `name|BDUSS|PTOKEN[|business-stoken]` 형식은 호환용으로만 파싱합니다. Web STOKEN과 나머지 브라우저 필드를 포함하지 않으므로 기본 30일 흐름에는 부족하며 `--legacy-freepoint`에만 적합합니다.
+
+## Qinglong / GitHub Actions
+
+1. `kuku_daily.py`를 업로드하고, Cookie 갱신이 필요하면 `kuku_get_cookie.py`도 함께 둡니다.
+2. 단일 계정은 `KUKU_COOKIES`, 멀티 계정은 `KUKU_TOKENS`를 설정합니다.
+3. `task kuku_daily.py`를 예약 실행합니다.
 
 ```cron
 15 8 * * *
 ```
 
-```bash
-task kuku_daily.py
-```
-
-멀티 계정에는 `KUKU_TOKENS`를 사용합니다.
-
-```text
-main|BDUSS_VALUE|PTOKEN_VALUE|STOKEN_VALUE
-second|BDUSS_VALUE|PTOKEN_VALUE|STOKEN_VALUE
-```
-
-계정은 줄바꿈 또는 `&`로 구분합니다. 각 항목은 `메모|BDUSS|PTOKEN[|STOKEN]` 형식입니다.
-
-## 최소 GitHub Actions 설정
-
-**Settings → Secrets and variables → Actions**에서 다음 Secrets를 추가합니다.
-
-| Secret | 필수 | 용도 |
+| Secret | 필수 | 설명 |
 | :--- | :---: | :--- |
-| `KUKU_COOKIES` | 단일 계정 | 단일 계정 Cookie |
-| `KUKU_STOKEN` | 선택 | Cookie와 함께 사용할 세션 토큰 |
-| `KUKU_TOKENS` | 멀티 계정 | 멀티 계정 항목이며 설정 시 우선 사용 |
+| `KUKU_COOKIES` | 단일 계정 | Web STOKEN을 포함한 전체 Cookie |
+| `KUKU_TOKENS` | 멀티 계정 | JSON 배열 또는 줄 형식 |
+| `KUKU_STOKEN` | 선택 | 단일 계정 기존 freepoint 전용 Business STOKEN |
 | `QYWX_TOKEN` | 선택 | WeCom 봇 key |
 | `PLUSPLUS_TOKEN` | 선택 | PushPlus token |
 
-포함된 워크플로는 기본적으로 수동 실행만 지원합니다. 먼저 **Actions → KukuAI Daily → Run workflow**로 검증합니다. 예약 실행을 켜려면 `.github/workflows/daily.yml`에서 `schedule:` 두 줄의 주석을 해제합니다.
-
-```yaml
-schedule:
-  - cron: '15 0 * * *'
-```
-
-`15 0 * * *`는 UTC 기준이며 베이징 시간 매일 08:15입니다. Ubuntu runner에서도 순수 서명 교환을 실행할 수 있습니다. `KUKU_STOKEN`은 생략할 수 있으며 `KUKU_COOKIES`에서 실행 시 교환하고 캐시합니다.
-
-## 주요 환경 변수
-
-| 변수 | 필수 | 설명 |
-| :--- | :---: | :--- |
-| `KUKU_COOKIES` | 단일 계정 | Cookie 헤더, Cookie 편집기 JSON 또는 `BDUSS` / `PTOKEN` 객체 |
-| `KUKU_STOKEN` | 선택 | 교환한 `genflowpro` 세션 토큰 |
-| `KUKU_TOKENS` | 멀티 계정 | `메모\|BDUSS\|PTOKEN[\|STOKEN]` 형식의 멀티 계정 |
-| `KUKU_PROXY` | 선택 | HTTP(S) 또는 SOCKS5 프록시 URL |
-| `KUKU_NO_NOTIFY` | 선택 | `1`로 설정하면 알림 비활성화 |
-| `QYWX_TOKEN` | 선택 | WeCom 봇 key이며 `WECHAT_WEBHOOK`도 지원 |
-| `PLUSPLUS_TOKEN` | 선택 | PushPlus token |
-
-## 명령행 옵션
+## 명령행
 
 | 옵션 | 동작 |
 | :--- | :--- |
-| 없음 | 설정된 모든 계정의 매일 작업 실행 |
+| 없음 | 모든 계정의 30일 체크인 |
 | `--only N` | N번째 계정만 실행 |
-| `--token` | 체크인 없이 세션 토큰만 교환하고 출력 |
+| `--legacy-freepoint` | Business STOKEN을 사용하는 기존 freepoint 실행 |
+| `--token` | 기존 freepoint Business STOKEN을 교환해 출력 |
+| `--version` | 스크립트 버전 출력 |
 
-## 검증 범위
+## 성공 판정
 
-이전 README에는 Cookie 파싱, 요청 헤더, 자격 증명 우선순위, 성공, 멱등 응답, 세션 만료, HTTP 실패, 멀티 계정 파싱, 로그 마스킹을 다루는 13개 오프라인 자체 테스트가 기록되어 있습니다. `v1.2.0`은 DLL 호출을 순수 MD5 서명 교환으로 대체했습니다. 새 교환 경로의 실제 계정 온라인 종단 간 로그는 포함되어 있지 않으므로 온라인 검수를 완료했다고 주장하지 않습니다.
+| 업스트림 결과 | 로컬 처리 |
+| :--- | :--- |
+| `errno=0`, `data.signed_today=true` | 성공 |
+| 홈페이지 `signed_today=true` | 중립 완료, POST하지 않음 |
+| `errno=10152` | 중립 완료, 오늘 이미 체크인 |
+| `errno=8001` / `8002` | 위험 제어 실패 |
+| `signed_today` 누락 또는 비불리언 | 실패 |
 
-## 개인정보 보호
+## 검증
 
-Cookie, STOKEN, 계정 목록은 환경 변수 또는 로컬 토큰 캐시에서만 읽습니다. 로그에는 마스킹된 BDUSS 일부만 표시됩니다. `.kuku_stoken.json`, 환경 변수 값, 전체 Cookie를 저장소, Issue, Actions 로그 또는 스크린샷에 공개하지 마세요.
+```powershell
+python -m unittest discover -s tests -v
+python -m pytest -q
+python -m py_compile kuku_daily.py kuku_get_cookie.py tests\_loader.py tests\test_kuku_contract.py
+ruff check .
+```
 
-## 사용 범위 및 재배포 안내
+모든 테스트는 가짜 응답을 사용합니다. 4단계 흐름, 엄격한 성공 판정, 10152, 8001/8002, 명시적 레거시, Web/Business STOKEN 분리, 멀티 계정 전체 Cookie, 마스킹, 알림을 검증합니다. 자세한 내용은 [PROTOCOL.md](PROTOCOL.md)를 확인하세요.
 
-공식 저장소, 스크립트, 배포 안내, Release는 무료로 공개됩니다. 저자의 명시적 서면 허가 없이 이 프로젝트를 유료 자료, 유료 배포, 업데이트 대행으로 포장하거나, 출처와 저작자 표시를 삭제하고 원작자로 가장하거나, 저자의 신원, 이름, 아바타, 결제 QR 코드를 사용해 공식 승인으로 오인하게 하는 행위를 금지합니다. 관련 없는 계정, 그룹, 채널, 유료 플랫폼에 옮겨 팔로워 증가, 트래픽 유도, 재판매를 하는 행위도 금지됩니다. 위반 시 게시 중단 요청을 받을 수 있으며 저자는 업데이트 중단, 저장소 보관 또는 삭제를 결정할 수 있습니다. 전체 규칙은 [NOTICE.md](../NOTICE.md)를 확인하세요.
+## 개인정보
 
-## 링크
+로그는 BDUSS를 마스킹합니다. `.kuku_stoken.json`, 전체 Cookie, STOKEN, 계정 내보내기 파일을 공개하지 마세요.
 
-- [Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)
-- [Issues](https://github.com/L0NE-6/KukuAI-Daily/issues)
-- [중국어 README](../README.md)
-- [변경 기록](../CHANGELOG.md)
+## 사용 범위
+
+공식 저장소, 스크립트, 배포 안내와 Release는 무료입니다. 저자의 서면 허가 없이 유료 판매, 유료 배포, 업데이트 대행, 저자 사칭, 결제 QR을 통한 공식 승인 오인을 금지합니다. 자세한 규칙은 [NOTICE.md](../NOTICE.md)를 확인하세요.
+
+## 버전
+
+- 저장소 버전: `v1.3.0`
+- Release 상태: 메인 스레드에서 통합 발행
+- 변경 기록: [CHANGELOG.md](../CHANGELOG.md)
 
 ## 면책 조항
 

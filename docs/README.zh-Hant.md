@@ -1,121 +1,143 @@
 # 🧩 KukuAI Daily
 
-**庫庫 AI（百度文庫 GenFlowPro）每日登入與對話獎勵領取工具，支援多帳號、青龍與 GitHub Actions。**
+**庫庫 AI「庫庫 30 天簽到」單檔腳本，支援多帳號、青龍與 GitHub Actions。**
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
-> 完整中文文件請見 [../README.md](../README.md)。
+> 完整簡體中文文件請見 [../README.md](../README.md)。
 
 ## 概覽
 
-KukuAI Daily 會領取庫庫 AI「免費領積分」活動中的每日登入與完成一次對話獎勵。成功執行時會輸出每個帳號的實際獎勵結果；若當天已領取，活動介面會回傳 `reward_point=0`，腳本會按冪等結果顯示「今日已領」，不把重複執行誤報成新增積分。
+KukuAI Daily 預設依序呼叫活動設定、活動首頁、JS 風控 Token 與簽到介面。舊 freepoint 任務只有在明確加上 `--legacy-freepoint` 時才會執行，不會自動回退。
 
-業務介面需要作用域為 `genflowpro` 的會話權杖。只帶網頁 Cookie 時，通用帳號查詢可能正常，但活動介面仍會判定未登入。目前 `v1.2.0` 已復刻官方引擎的 MD5 簽名，使用 `BDUSS` + `PTOKEN` 換發，不需要載入 `genflowengine.dll`；Windows、Linux、Docker 與青龍都能執行。
+只有回應同時滿足 `errno=0` 與布林值 `data.signed_today=true` 才算簽到成功。`errno=10152` 是今日已簽的中性狀態；`8001` / `8002` 是上游風控失敗。
 
-## 核心能力
+## 預設請求流程
 
-- 領取每日 `LOGIN` 與 `CHAT` 任務。
-- 正確處理活動介面的冪等回執。
-- 單帳號使用 `KUKU_COOKIES`，多帳號使用 `KUKU_TOKENS`。
-- 依序嘗試已設定的 STOKEN、本機快取、跨平台 MD5 簽名換發。
-- 日誌只顯示遮罩後的 BDUSS 片段。
-- 可選企業微信與 PushPlus 推送。
-- 僅使用 Python 標準函式庫。
-
-## 準備憑據
-
-```bash
-python kuku_get_cookie.py
-python kuku_get_cookie.py --paste
-python kuku_get_cookie.py --exchange
-python kuku_get_cookie.py --paste --exchange
-python kuku_daily.py --token
+```text
+GET  /act/api/conf?conf_key=kukuSignConf
+GET  /act/v2/kukuai30/homepage?tid=<activityTid>
+GET  /operation/activitys/api/getJsToken
+POST /act/v2/kukuai30/signin?tid=<activityTid>&jsToken=<token>&aid=15459
 ```
 
-預設 `--exchange` 會先讀取本機桌面端 Cookie 資料庫。使用 `--paste --exchange` 時，可手動貼上含 `BDUSS` 與 `PTOKEN` 的完整 Cookie，再於任意平台完成純簽名換發。`python kuku_daily.py --token` 會為已設定帳號直接換發。工具會輸出 `KUKU_STOKEN=...`。
+所有請求固定使用：
 
-## 最短青龍設定
+```text
+Referer: https://kuku.baidu.com/operation/activitys/kukuPcSignAct/main
+```
 
-1. 將 `kuku_daily.py` 上傳到青龍腳本目錄。
-2. 新增環境變數 `KUKU_COOKIES` 與換發得到的 `KUKU_STOKEN`。
-3. 從腳本清單建立定時任務，讓命令成為 `task kuku_daily.py`。
+## 兩種 STOKEN
+
+| 名稱 | 來源 | 用途 |
+| :--- | :--- | :--- |
+| 網頁 STOKEN | 完整 Cookie 內的 `STOKEN` | 僅供 30 天簽到 |
+| 業務 STOKEN | `KUKU_STOKEN`、多帳號 `business_stoken`、快取或換發結果 | 僅供 `--legacy-freepoint` |
+
+`KUKU_STOKEN` 不會覆蓋網頁 `STOKEN`。Cookie 缺少網頁 `STOKEN` 時，預設流程會明確失敗並提示重新匯出完整 Cookie，不會改用業務 STOKEN。
+
+## 單帳號
+
+```text
+KUKU_COOKIES=BDUSS=...; STOKEN=<網頁STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...
+```
+
+舊 freepoint 可另外設定：
+
+```text
+KUKU_STOKEN=<業務STOKEN>
+```
+
+## 多帳號
+
+建議使用 JSON 陣列。每個帳號的完整 Cookie 放在 `cookie`，業務 STOKEN 單獨放在 `business_stoken`：
+
+```json
+[
+  {
+    "name": "主號",
+    "cookie": "BDUSS=...; STOKEN=<網頁STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "business_stoken": ""
+  },
+  {
+    "name": "副號",
+    "cookie": "BDUSS=...; STOKEN=<網頁STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "business_stoken": ""
+  }
+]
+```
+
+也支援逐行格式：
+
+```text
+主號|BDUSS=...; STOKEN=<網頁STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...|業務STOKEN（可空）
+副號|BDUSS=...; STOKEN=<網頁STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...|業務STOKEN（可空）
+```
+
+舊格式 `備註|BDUSS|PTOKEN[|業務STOKEN]` 仍可解析，但不含網頁 STOKEN 與其它 Cookie，只適合 `--legacy-freepoint`。
+
+## 青龍與 Actions
+
+1. 上傳 `kuku_daily.py`；需要更新用戶端 Cookie 時一併上傳 `kuku_get_cookie.py`。
+2. 單帳號設定 `KUKU_COOKIES`，多帳號設定 `KUKU_TOKENS`。
+3. 建立 `task kuku_daily.py` 定時任務。
 
 ```cron
 15 8 * * *
 ```
 
-```bash
-task kuku_daily.py
-```
-
-多帳號請改用 `KUKU_TOKENS`：
-
-```text
-主號|BDUSS_VALUE|PTOKEN_VALUE|STOKEN_VALUE
-副號|BDUSS_VALUE|PTOKEN_VALUE|STOKEN_VALUE
-```
-
-帳號之間可用換行或 `&` 分隔，每條格式為 `備註|BDUSS|PTOKEN[|STOKEN]`。
-
-## 最短 GitHub Actions 設定
-
-在 **Settings → Secrets and variables → Actions** 新增：
-
-| Secret | 必填 | 用途 |
+| Secret | 必填 | 說明 |
 | :--- | :---: | :--- |
-| `KUKU_COOKIES` | 單帳號 | 單帳號 Cookie |
-| `KUKU_STOKEN` | 否 | 與 Cookie 配套的會話權杖 |
-| `KUKU_TOKENS` | 多帳號 | 多帳號資料，設定後優先使用 |
-| `QYWX_TOKEN` | 否 | 企業微信機器人 key |
-| `PLUSPLUS_TOKEN` | 否 | PushPlus token |
+| `KUKU_COOKIES` | 單帳號 | 完整網頁 Cookie，含網頁 STOKEN |
+| `KUKU_TOKENS` | 多帳號 | JSON 陣列或逐行格式，優先於單帳號變數 |
+| `KUKU_STOKEN` | 選填 | 僅單帳號舊 freepoint 使用的業務 STOKEN |
+| `QYWX_TOKEN` | 選填 | 企業微信機器人 key |
+| `PLUSPLUS_TOKEN` | 選填 | PushPlus token |
 
-內建工作流程預設只能手動觸發。先到 **Actions → KukuAI Daily → Run workflow** 驗證。需要定時執行時，取消 `.github/workflows/daily.yml` 裡兩行 `schedule:` 註解：
-
-```yaml
-schedule:
-  - cron: '15 0 * * *'
-```
-
-`15 0 * * *` 使用 UTC，等於北京時間每天 08:15。Actions 的 Ubuntu runner 可以執行純簽名換發；`KUKU_STOKEN` 可省略，由 `KUKU_COOKIES` 在執行時換發並快取。
-
-## 關鍵環境變數
-
-| 變數 | 必填 | 說明 |
-| :--- | :---: | :--- |
-| `KUKU_COOKIES` | 單帳號 | Cookie 標頭、Cookie 編輯器 JSON，或含 `BDUSS` / `PTOKEN` 的物件 |
-| `KUKU_STOKEN` | 否 | 已換發的 `genflowpro` 會話權杖 |
-| `KUKU_TOKENS` | 多帳號 | 多帳號，格式 `備註\|BDUSS\|PTOKEN[\|STOKEN]` |
-| `KUKU_PROXY` | 否 | HTTP(S) 或 SOCKS5 代理網址 |
-| `KUKU_NO_NOTIFY` | 否 | 設為 `1` 時關閉推送 |
-| `QYWX_TOKEN` | 否 | 企業微信機器人 key，也相容 `WECHAT_WEBHOOK` |
-| `PLUSPLUS_TOKEN` | 否 | PushPlus token |
-
-## 命令列參數
+## 命令列
 
 | 參數 | 作用 |
 | :--- | :--- |
-| 無 | 執行所有已設定帳號的每日任務 |
+| 無 | 執行所有帳號的 30 天簽到 |
 | `--only N` | 只執行第 N 個帳號 |
-| `--token` | 只換發並輸出會話權杖，不執行簽到 |
+| `--legacy-freepoint` | 明確執行舊 freepoint，使用業務 STOKEN |
+| `--token` | 只換發並輸出舊 freepoint 業務 STOKEN |
+| `--version` | 輸出腳本版本 |
 
-## 驗證範圍
+## 成功判據
 
-舊版 README 記錄了 13 項離線自測，涵蓋 Cookie 解析、請求標頭、權杖優先順序、成功、冪等、會話失效、HTTP 失敗、多帳號解析與日誌脫敏。`v1.2.0` 已把 DLL 呼叫替換為純 MD5 簽名換發；倉庫沒有附上新換發路徑的真實帳號端到端線上日誌，因此不宣稱已完成線上驗收。
+| 上游結果 | 本地處理 |
+| :--- | :--- |
+| `errno=0`、`data.signed_today=true` | 簽到成功 |
+| 首頁 `signed_today=true` | 中性完成，不再 POST |
+| `errno=10152` | 中性完成，今日已簽 |
+| `errno=8001` / `8002` | 風控失敗 |
+| 缺少或非布林 `signed_today` | 失敗 |
 
-## 隱私提醒
+## 驗證
 
-Cookie、STOKEN 與帳號清單只從環境變數或本機權杖快取讀取，日誌只顯示遮罩後的 BDUSS 片段。請勿在倉庫、Issue、Actions 日誌或截圖中公開 `.kuku_stoken.json`、環境變數值或完整 Cookie。
+```powershell
+python -m unittest discover -s tests -v
+python -m pytest -q
+python -m py_compile kuku_daily.py kuku_get_cookie.py tests\_loader.py tests\test_kuku_contract.py
+ruff check .
+```
 
-## 使用邊界與轉載聲明
+測試全部使用假回應，涵蓋四步主鏈、嚴格成功判據、雙 STOKEN 隔離、多帳號完整 Cookie、脫敏與通知。協議證據見 [PROTOCOL.md](PROTOCOL.md)。
 
-官方倉庫、腳本、部署說明與 Release 均免費公開。未經作者明確書面許可，請勿將本專案包裝為付費資源、付費部署或包更新服務，請勿刪除署名後冒充原創，請勿冒充作者，亦請勿使用作者身分、名稱、頭像或收款碼製造背書假象；請勿搬運到無關帳號、群組、頻道或付費平台以漲粉、截流、轉賣或引流。違規時，作者可要求下架，並可視情況暫停更新、封存或刪除倉庫。完整規則見 [NOTICE.md](../NOTICE.md)。
+## 隱私
 
-## 連結
+日誌只顯示遮罩後的 BDUSS。請勿公開 `.kuku_stoken.json`、完整 Cookie、網頁／業務 STOKEN、多帳號匯出檔。
 
-- [Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)
-- [Issues](https://github.com/L0NE-6/KukuAI-Daily/issues)
-- [簡體中文完整文件](../README.md)
-- [更新記錄](../CHANGELOG.md)
+## 使用邊界
+
+官方倉庫、腳本、部署說明與 Release 均免費公開。未經作者書面許可，請勿包裝為付費資源、收費部署或更新服務，請勿刪除署名、冒充作者或使用作者身分與收款碼製造背書。完整規則見 [NOTICE.md](../NOTICE.md)。
+
+## 版本
+
+- 倉庫版本：`v1.3.0`
+- Release 狀態：由主執行緒統一發布
+- 更新記錄：[CHANGELOG.md](../CHANGELOG.md)
 
 ## 免責聲明
 

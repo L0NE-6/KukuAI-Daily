@@ -1,5 +1,16 @@
 # 更新日志
 
+## v1.3.0（2026-11-05）
+
+- 主链路切换到「库库 30 天签到」：活动配置 → 活动首页 → `getJsToken` → 签到，固定活动页 Referer 与 `aid=15459`。
+- 成功判据收紧为 `errno=0` 且 `data.signed_today=true`；`10152` 中性完成，`8001` / `8002` 风控失败，缺省 `signed_today` 不再视为成功。
+- 旧 freepoint 改为仅显式 `--legacy-freepoint` 运行，不再自动兜底。
+- 拆分网页 STOKEN 与旧 freepoint 业务 STOKEN：`KUKU_STOKEN` 只供 legacy，不再覆盖 Cookie 内网页 STOKEN；缺少网页 STOKEN 时明确提示重新导出 Cookie。
+- `KUKU_TOKENS` 支持 JSON 数组与完整 Cookie 行格式，保留 `PTOKEN`、`BAIDUID`、`PANPSC` 及其它 Cookie 字段。
+- `kuku_get_cookie.py` 读取客户端 Cookie 时保留百度域完整登录态，并明确标注输出的是 legacy 业务 STOKEN。
+- 新增六语文档与 `docs/PROTOCOL.md`，补充协议证据、成功判据、双 STOKEN 边界和多账号格式。
+- 验证：unittest、pytest、py_compile、ruff、YAML、diff-check 与敏感扫描；全部使用假响应，不含真实账号 Cookie。
+
 ## v1.2.1（2026-11-04）
 
 - 文档发行版：同步首屏使用边界、反收费/反搬运声明、`NOTICE.md`、微信/支付宝赞赏码防诈骗提醒与六语导航。

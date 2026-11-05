@@ -11,22 +11,19 @@ KukuAI 登录态获取工具
 
 输出：
   · KUKU_COOKIES=…     直接填环境变量
-  · KUKU_STOKEN=…      换发成功时输出（Linux / 青龙直接填这一项即可长期使用）
+  · KUKU_STOKEN=…      旧 freepoint 的业务 STOKEN，仅 --legacy-freepoint 使用
 
-说明：会话令牌按产品签发，网页登录 Cookie 里那份是通行证级的，业务接口不认；
-      本工具用官方引擎同款 MD5 签名直接换发（不再依赖 genflowengine.dll）。
+说明：默认 30 天签到只使用完整网页 Cookie，其中必须包含 BDUSS 与网页 STOKEN。
+      KUKU_STOKEN 不会覆盖网页 STOKEN。旧 freepoint 的业务令牌按产品签发，
+      本工具用官方引擎同款 MD5 签名换发（不再依赖 genflowengine.dll）。
 """
 
 import argparse
-import json
 import os
-import re
 import sqlite3
 import shutil
 import sys
 import tempfile
-import urllib.parse
-import urllib.request
 
 try:
     sys.stdout.reconfigure(errors="replace")
@@ -35,7 +32,11 @@ except Exception:
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
-    from kuku_daily import USER_AGENT, BASE_URL, exchange_stoken, parse_cookie, proxy_opener
+    from kuku_daily import (
+        exchange_stoken,
+        parse_cookie_parts,
+        proxy_opener,
+    )
 except Exception as e:
     print("❌ 需要与 kuku_daily.py 放在同一目录：%s" % e)
     sys.exit(1)
@@ -53,6 +54,25 @@ def client_cookie_db():
         if os.path.isfile(p):
             return p
     return ""
+
+
+def cookie_rows_to_header(rows):
+    """把浏览器 Cookie 行归一成 Cookie 头，保留百度域完整登录态。"""
+    picked = []
+    seen = set()
+    for host, name, value in rows:
+        if not value or "baidu.com" not in str(host):
+            continue
+        if name == "HMACCOUNT" or name.lower().startswith("hm_"):
+            continue
+        low = name.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        picked.append((name, value))
+    if not any(name.lower() == "bduss" for name, _ in picked):
+        return ""
+    return "; ".join("%s=%s" % (name, value) for name, value in picked)
 
 
 def read_from_client():
@@ -79,24 +99,18 @@ def read_from_client():
         if conn is not None:
             conn.close()
         shutil.rmtree(tmpdir, ignore_errors=True)
-    picked = {}
-    for host, name, value in rows:
-        if not value:
-            continue
-        if "baidu.com" not in str(host):
-            continue
-        if name in ("BDUSS", "PTOKEN", "STOKEN", "BAIDUID", "BDUSS_BFESS"):
-            picked[name] = value
-    if not picked.get("BDUSS"):
+    cookie = cookie_rows_to_header(rows)
+    if not cookie:
         print("❌ 数据库里没有找到 BDUSS，说明客户端还没登录。")
         return None
-    cookie = "; ".join("%s=%s" % (k, v) for k, v in picked.items())
-    print("✅ 已从客户端读取到 %d 个 Cookie（BDUSS %s）" % (len(picked), picked["BDUSS"][-4:]))
+    bduss, _, web_stoken, _ = parse_cookie_parts(cookie)
+    note = "" if web_stoken else "；缺少网页 STOKEN，请重新登录客户端后再导出"
+    print("✅ 已从客户端读取完整 Cookie（BDUSS %s%s）" % (bduss[-4:], note))
     return cookie
 
 
 def read_pasted():
-    print("请粘贴 Cookie（支持 Cookie 头 / Cookie 编辑器 JSON / {BDUSS,PTOKEN} 对象），粘贴完按回车：")
+    print("请粘贴完整 Cookie（必须含 BDUSS 与网页 STOKEN；也接受 Cookie 编辑器 JSON），粘贴完按回车：")
     try:
         text = input().strip()
     except EOFError:
@@ -108,21 +122,26 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--paste", action="store_true", help="手动粘贴 Cookie")
     ap.add_argument("--exchange", action="store_true", help="换发 genflowpro 会话令牌")
-    ap.add_argument("--stoken", default="", help="已有会话令牌时直接给出")
+    ap.add_argument("--stoken", default="", help="已有旧 freepoint 业务 STOKEN 时直接给出")
     args = ap.parse_args()
 
     cookie = read_pasted() if args.paste else read_from_client()
     if not cookie:
         return 1
-    bduss, ptoken, extras = parse_cookie(cookie)
+    bduss, ptoken, web_stoken, _ = parse_cookie_parts(cookie)
     if len(bduss) < 8:
         print("❌ Cookie 里没有有效的 BDUSS，请确认复制完整。")
         return 1
     print()
     print("KUKU_COOKIES=%s" % cookie)
+    if not web_stoken:
+        print()
+        print("⚠️ Cookie 缺少网页 STOKEN；默认 30 天签到会明确失败，请重新导出完整 Cookie。")
     print()
     if args.stoken:
         print("KUKU_STOKEN=%s" % args.stoken)
+        print()
+        print("该业务 STOKEN 只供 kuku_daily.py --legacy-freepoint。")
         return 0
     if not args.exchange:
         print("（需要会话令牌时：加 --exchange 运行本工具，纯算法换发，任意平台都可）")
@@ -139,7 +158,8 @@ def main():
     print()
     print("KUKU_STOKEN=%s" % stoken)
     print()
-    print("把 KUKU_STOKEN 填进 Linux / 青龙环境变量即可（与 KUKU_COOKIES 一起用）。")
+    print("该业务 STOKEN 只供 kuku_daily.py --legacy-freepoint；")
+    print("默认 30 天签到仍使用 KUKU_COOKIES 内的网页 STOKEN。")
     return 0
 
 

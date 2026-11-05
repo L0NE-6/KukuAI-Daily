@@ -4,20 +4,23 @@
 KukuAI（百度文库 · 库库 AI / GenFlowPro）每日签到 —— 单文件青龙脚本
 
 做什么：
-  · 领取「免费领积分」活动的每日任务奖励：每日登录（LOGIN）+ 完成一次对话（CHAT）
-  · 任务接口幂等：重复领取返回 reward_point=0，不算失败
+  · 默认执行「库库 30 天签到」：读活动配置、查签到面板、取风控 token、签到
+  · 成功只认 errno=0 且 data.signed_today 为布尔 true；10152 按已签中性处理
+  · 旧「免费领积分」任务仅在显式传入 --legacy-freepoint 时执行
 
 前置条件（重要）：
-  · 业务接口需要一个按产品签发的会话令牌（STOKEN，作用域 genflowpro）。
+  · 30 天签到只使用完整网页 Cookie；其中必须包含 BDUSS 与网页 STOKEN。
+  · KUKU_STOKEN 是旧 freepoint 的业务令牌，不会覆盖或替代网页 STOKEN。
+  · 旧 freepoint 业务接口需要一个按产品签发的会话令牌（作用域 genflowpro）。
     网页登录拿到的 Cookie 里那份是通行证级的，业务接口会判未登录（errno=-6）。
     本脚本用**纯算法**换发（复刻官方引擎的 MD5 签名）—— 不再依赖
     genflowengine.dll，Windows / Linux / 青龙都能直接换发。
 
 环境变量：
-  KUKU_COOKIES     必填。Cookie 头（`BDUSS=…; PTOKEN=…`）、Cookie 编辑器 JSON、
-                   或 {"BDUSS":"…","PTOKEN":"…"} 对象都认。
-  KUKU_STOKEN      可选。已换发好的 genflowpro 会话令牌；没有则本机尝试自动换发。
-  KUKU_TOKENS      可选。多账号，换行或 & 分隔，每条形如 `备注|BDUSS|PTOKEN[|STOKEN]`。
+  KUKU_COOKIES     必填。完整网页 Cookie，至少包含 BDUSS 与 STOKEN；PTOKEN、
+                   BAIDUID、PANPSC 等字段会原样保留。
+  KUKU_STOKEN      可选。旧 freepoint 的业务 STOKEN；30 天链路永不读取。
+  KUKU_TOKENS      可选。多账号，推荐 JSON 数组；也支持“备注|完整Cookie|业务STOKEN”。
   KUKU_PROXY       可选。http(s)/socks5 代理，例如 http://127.0.0.1:7890
   KUKU_NO_NOTIFY   可选。设 1 关闭推送。
 
@@ -25,9 +28,10 @@ KukuAI（百度文库 · 库库 AI / GenFlowPro）每日签到 —— 单文件�
       配了哪个推哪个；都没有则只打印。
 
 用法：
-  python kuku_daily.py            # 全部账号
-  python kuku_daily.py --only 1   # 只跑第 1 个
-  python kuku_daily.py --token    # 只尝试换发并打印令牌（任意平台）
+  python kuku_daily.py                     # 30 天签到，全部账号
+  python kuku_daily.py --only 1            # 只跑第 1 个账号
+  python kuku_daily.py --legacy-freepoint  # 显式执行旧 freepoint 任务
+  python kuku_daily.py --token             # 只尝试换发并打印令牌（任意平台）
 
 依赖：Python 3.8+，仅标准库。
 """
@@ -47,6 +51,7 @@ try:
 except Exception:
     pass
 
+VERSION = "1.3.0"
 BASE_URL = "https://kuku.baidu.com"
 PASSPORT_AUTH_URL = "https://passport.baidu.com/v3/login/api/auth"
 WEB_QUERY = ("clienttype=400&app_id=123971023&web=1&channel=chunlei&version=1.4.4")
@@ -58,6 +63,14 @@ ENGINE_SIGN_KEY = "34868b316de55815273b2616954b0286"
 # passport 换发接口对客户端引擎 UA 敏感，浏览器 UA 不可靠
 ENGINE_UA = "genflow;1.6.5;PC;PC-Windows;10.0.26200;GenFlowPro"
 DAILY_TASKS = (("LOGIN", "每日登录"), ("CHAT", "完成一次对话"))
+ACTIVITY_CONF_URL = BASE_URL + "/act/api/conf?conf_key=kukuSignConf"
+ACTIVITY_HOME_URL = BASE_URL + "/act/v2/kukuai30/homepage"
+ACTIVITY_TOKEN_URL = BASE_URL + "/operation/activitys/api/getJsToken"
+ACTIVITY_SIGN_URL = BASE_URL + "/act/v2/kukuai30/signin"
+ACTIVITY_REFERER = ("https://kuku.baidu.com/operation/activitys/"
+                    "kukuPcSignAct/main")
+ACTIVITY_AID = 15459
+ACTIVITY_SIGN_POINT = 10
 STOKEN_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".kuku_stoken.json")
 MIN_BDUSS_LEN = 8
 
@@ -73,11 +86,12 @@ def mask(value):
     return ("*" * max(0, len(v) - 4)) + v[-4:] if len(v) > 4 else "*" * len(v)
 
 
-def http(method, url, headers=None, body=None, timeout=30):
+def http(method, url, headers=None, body=None, timeout=30, opener=None):
     """返回 (status, text)。网络错误返回 (-1, 错误串)。"""
     req = urllib.request.Request(url, data=body, headers=headers or {}, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        open_url = opener.open if opener else urllib.request.urlopen
+        with open_url(req, timeout=timeout) as resp:
             return resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
@@ -91,6 +105,39 @@ def proxy_opener():
     if not url:
         return None
     return urllib.request.build_opener(urllib.request.ProxyHandler({"http": url, "https": url}))
+
+
+def request_json(method, url, headers, body=None, opener=None, label="响应"):
+    """发起请求并解析 JSON 对象；失败返回 (status, None, 错误文案)。"""
+    if opener:
+        status, text = http(method, url, headers, body, opener=opener)
+    else:
+        status, text = http(method, url, headers, body)
+    try:
+        value = json.loads(text)
+    except Exception:
+        return status, None, "%s不是 JSON（http=%s）%s" % (label, status, text[:160])
+    if not isinstance(value, dict):
+        return status, None, "%s不是 JSON 对象（http=%s）" % (label, status)
+    return status, value, ""
+
+
+def integer(value):
+    """只接受 JSON 整数或纯十进制字符串；缺失和布尔值都返回 None。"""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip(), 10)
+        except ValueError:
+            return None
+    return None
+
+
+def response_message(value, default="未知错误"):
+    return str(value.get("show_msg") or value.get("errmsg") or default)
 
 
 # ────────────────────────── Cookie 解析 ──────────────────────────
@@ -134,13 +181,13 @@ def _pairs_from_json(raw):
     return pairs
 
 
-def parse_cookie(raw):
-    """把各种形态的 Cookie 归一到 (bduss, ptoken, extras)。"""
+def parse_cookie_parts(raw):
+    """把各种形态的 Cookie 归一到 (bduss, ptoken, web_stoken, extras)。"""
     raw = (raw or "").strip()
     pairs = _pairs_from_json(raw) if raw[:1] in "[{" else []
     if not pairs:
         pairs = _pairs_from_header(raw)
-    bduss = ptoken = ""
+    bduss = ptoken = web_stoken = ""
     extras = []
     seen = set()
     for name, value in pairs:
@@ -149,28 +196,53 @@ def parse_cookie(raw):
             bduss = value
         elif low == "ptoken":
             ptoken = value
-        elif low not in ("gfprotpl", "stoken"):
+        elif low == "stoken":
+            web_stoken = value
+        elif low != "gfprotpl":
             if low not in seen:
                 seen.add(low)
                 extras.append((name, value))
+    return bduss, ptoken, web_stoken, extras
+
+
+def parse_cookie(raw):
+    """兼容旧调用：返回 (bduss, ptoken, extras)。"""
+    bduss, ptoken, _, extras = parse_cookie_parts(raw)
     return bduss, ptoken, extras
 
 
-def cookie_header(bduss, stoken, extras):
+def cookie_header(bduss, stoken, extras, ptoken=""):
     parts = ["BDUSS=" + bduss]
     if stoken:
         parts.append("STOKEN=" + stoken)
+    if ptoken:
+        parts.append("PTOKEN=" + ptoken)
     for name, value in extras:
+        low = str(name).lower()
+        if low in ("bduss", "stoken", "ptoken", "gfprotpl"):
+            continue
         parts.append("%s=%s" % (name, value))
     parts.append("gfprotpl=genflowpro")
     return "; ".join(parts)
 
 
-def request_headers(bduss, stoken, extras):
+def request_headers(bduss, business_stoken, extras, ptoken=""):
+    """旧 freepoint 请求头；只允许使用业务 STOKEN。"""
     return {
-        "Cookie": cookie_header(bduss, stoken, extras),
+        "Cookie": cookie_header(bduss, business_stoken, extras, ptoken),
         "User-Agent": USER_AGENT,
         "Referer": BASE_URL + "/genflowpro",
+        "Origin": BASE_URL,
+        "Accept-Language": "zh-CN,zh;q=0.9",
+    }
+
+
+def activity_headers(bduss, web_stoken, extras, ptoken=""):
+    """30 天签到请求头；只允许使用完整 Cookie 内的网页 STOKEN。"""
+    return {
+        "Cookie": cookie_header(bduss, web_stoken, extras, ptoken),
+        "User-Agent": USER_AGENT,
+        "Referer": ACTIVITY_REFERER,
         "Origin": BASE_URL,
         "Accept-Language": "zh-CN,zh;q=0.9",
     }
@@ -329,17 +401,140 @@ def resolve_stoken(bduss, ptoken, manual, opener=None):
 
 
 # ────────────────────────── 签到 ──────────────────────────
+def activity_config(value):
+    """从活动配置响应中取 (activityTid, signPoint)。"""
+    rows = value.get("data")
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        config = row.get("conf_value")
+        if not isinstance(config, dict):
+            continue
+        tid_value = config.get("activityTid")
+        if isinstance(tid_value, bool) or not isinstance(tid_value, (int, str)):
+            continue
+        tid = str(tid_value).strip()
+        if not tid:
+            continue
+        point = integer(config.get("signPoint"))
+        if point is None or point < 0:
+            point = ACTIVITY_SIGN_POINT
+        return tid, point
+    return None
+
+
+def extract_js_token(raw):
+    """从 URL 编码的 JS 片段中取最后一对双引号内的风控 token。"""
+    decoded = urllib.parse.unquote(str(raw or ""))
+    end = decoded.rfind('"')
+    if end < 0:
+        return ""
+    start = decoded.rfind('"', 0, end)
+    if start < 0:
+        return ""
+    return decoded[start + 1:end]
+
+
+def checkin_thirty_days(bduss, web_stoken, extras=None, opener=None, ptoken=""):
+    """执行库库 30 天签到主链路，返回 (ok, 摘要文本)。"""
+    if not web_stoken:
+        return False, (
+            "网页 Cookie 缺少 STOKEN，请从活动页重新导出完整 Cookie；"
+            "KUKU_STOKEN 仅用于旧 freepoint，不会替代网页 STOKEN"
+        )
+    headers = activity_headers(bduss, web_stoken, extras or [], ptoken)
+
+    status, conf, error = request_json(
+        "GET", ACTIVITY_CONF_URL, headers, opener=opener, label="活动配置响应")
+    if error:
+        return False, "30 天签到活动配置读取失败：%s" % error
+    if status != 200:
+        return False, "30 天签到活动配置读取失败：http=%s" % status
+    conf_errno = integer(conf.get("errno"))
+    if conf_errno not in (None, 0):
+        return False, "30 天签到活动配置不可用：errno=%s %s" % (
+            conf_errno, response_message(conf))
+    config = activity_config(conf)
+    if not config:
+        return False, "30 天签到活动配置缺少 activityTid"
+    tid, point = config
+
+    home_url = ACTIVITY_HOME_URL + "?" + urllib.parse.urlencode({"tid": tid})
+    status, home, error = request_json(
+        "GET", home_url, headers, opener=opener, label="活动面板响应")
+    if error:
+        return False, "30 天签到活动面板读取失败：%s" % error
+    if status != 200:
+        return False, "30 天签到活动面板读取失败：http=%s" % status
+    home_errno = integer(home.get("errno"))
+    if home_errno != 0:
+        return False, "30 天签到活动面板不可读：errno=%s %s" % (
+            home_errno, response_message(home))
+    data = home.get("data")
+    if not isinstance(data, dict):
+        data = {}
+    continuous = max(0, integer(data.get("continuous_days")) or 0)
+    total = max(0, integer(data.get("total_days")) or 0)
+    if data.get("signed_today") is True:
+        return True, "今日已签到（连续 %s 天，累计 %s 天）" % (continuous, total)
+
+    status, token_value, error = request_json(
+        "GET", ACTIVITY_TOKEN_URL, headers, opener=opener, label="签到凭证响应")
+    if error:
+        return False, "签到凭证获取失败：%s" % error
+    if status != 200:
+        return False, "签到凭证获取失败：http=%s" % status
+    token_data = token_value.get("data")
+    if not isinstance(token_data, dict):
+        token_data = {}
+    token = extract_js_token(token_data.get("jsToken"))
+    if not token:
+        return False, "签到凭证为空（jsToken 解析失败）"
+
+    query = urllib.parse.urlencode({
+        "tid": tid,
+        "jsToken": token,
+        "aid": str(ACTIVITY_AID),
+    })
+    sign_headers = dict(headers)
+    sign_headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8"
+    status, signed, error = request_json(
+        "POST", ACTIVITY_SIGN_URL + "?" + query, sign_headers,
+        body=b"", opener=opener, label="签到响应")
+    if error:
+        return False, "签到请求失败：%s" % error
+    errno = integer(signed.get("errno"))
+    if errno == 0:
+        sign_data = signed.get("data")
+        if not isinstance(sign_data, dict):
+            sign_data = {}
+        if status != 200:
+            return False, "上游未确认签到完成（http=%s）" % status
+        if sign_data.get("signed_today") is not True:
+            return False, "上游未确认签到完成（errno=0，signed_today 不是 true）"
+        signed_continuous = integer(sign_data.get("continuous"))
+        if signed_continuous is not None:
+            continuous = max(0, signed_continuous)
+        total = max(total, continuous)
+        return True, "库库 30 天签到成功：+%s 积分（连续 %s 天，累计 %s 天）" % (
+            point, continuous, total)
+    if errno == 10152:
+        return True, "今日已签到（errno=10152；连续 %s 天，累计 %s 天）" % (
+            continuous, total)
+    if errno in (8001, 8002):
+        return False, "上游风控未通过（errno=%s：%s），请重新登录该账号后再试" % (
+            errno, response_message(signed))
+    if errno is None:
+        return False, "签到响应缺少 errno（http=%s）" % status
+    return False, "签到失败：errno=%s %s" % (errno, response_message(signed))
+
+
 def panel_of(headers, opener=None):
     url = "%s/api/genflowpro/freepoint/homenew?%s" % (BASE_URL, WEB_QUERY)
-    req = urllib.request.Request(url, headers=headers, method="GET")
     if opener:
-        try:
-            with opener.open(req, timeout=30) as resp:
-                return resp.status, resp.read().decode("utf-8", "replace")
-        except urllib.error.HTTPError as e:
-            return e.code, e.read().decode("utf-8", "replace")
-        except Exception as e:
-            return -1, str(e)
+        return http("GET", url, headers, opener=opener)
     return http("GET", url, headers)
 
 
@@ -349,14 +544,7 @@ def complete_task(task_type, headers, opener=None):
     h = dict(headers)
     h["Content-Type"] = "application/x-www-form-urlencoded"
     if opener:
-        req = urllib.request.Request(url, data=body, headers=h, method="POST")
-        try:
-            with opener.open(req, timeout=30) as resp:
-                status, text = resp.status, resp.read().decode("utf-8", "replace")
-        except urllib.error.HTTPError as e:
-            status, text = e.code, e.read().decode("utf-8", "replace")
-        except Exception as e:
-            status, text = -1, str(e)
+        status, text = http("POST", url, h, body, opener=opener)
     else:
         status, text = http("POST", url, h, body)
     try:
@@ -365,73 +553,200 @@ def complete_task(task_type, headers, opener=None):
         return status, {"errno": -1, "show_msg": text[:160]}
 
 
-def checkin_one(name, bduss, ptoken, manual_stoken, opener=None):
-    """返回 (ok, 摘要文本)。"""
+def legacy_freepoint_one(
+        name, bduss, ptoken, business_stoken, opener=None, extras=None):
+    """显式执行旧 freepoint 任务，返回 (ok, 摘要文本)。"""
     try:
-        stoken, source = resolve_stoken(bduss, ptoken, manual_stoken, opener)
+        stoken, _ = resolve_stoken(bduss, ptoken, business_stoken, opener)
     except Exception as e:
         return False, "会话令牌不可用：%s" % e
-    headers = request_headers(bduss, stoken, [])
+    headers = request_headers(bduss, stoken, extras or [], ptoken)
     status, text = panel_of(headers, opener)
     try:
         panel = json.loads(text)
     except Exception:
         return False, "任务面板响应异常（http=%s）%s" % (status, text[:120])
-    errno = panel.get("errno")
+    errno = integer(panel.get("errno"))
     if errno != 0:
-        msg = panel.get("show_msg") or panel.get("errmsg") or "未知错误"
         hint = ""
         if errno == -6:
             hint = "（会话令牌失效，请在 Windows 上重跑 `--token` 换发后更新）"
-        return False, "任务面板不可读：errno=%s %s %s" % (errno, msg, hint)
+        return False, "任务面板不可读：errno=%s %s %s" % (
+            errno, response_message(panel), hint)
+    panel_data = panel.get("data")
+    activities = panel_data.get("activities") if isinstance(panel_data, dict) else None
+    if isinstance(activities, list) and not activities:
+        return True, "当前没有可参加的「免费领积分」活动（活动可能已结束）"
     gained = []
     already = False
     total = 0
-    for task_type, label in DAILY_TASKS:
-        t_status, value = complete_task(task_type, headers, opener)
-        errno = value.get("errno")
+    failures = []
+    unresolved = []
+    for task_type, task_label in DAILY_TASKS:
+        _, value = complete_task(task_type, headers, opener)
+        errno = integer(value.get("errno"))
         if errno != 0:
+            message = response_message(value)
             log("⚠️  [%s] %s 领取失败：errno=%s %s" % (
-                name, label, errno, value.get("show_msg") or value.get("errmsg") or ""))
+                name, task_label, errno, message))
+            failures.append("%s：errno=%s %s" % (task_label, errno, message))
             continue
-        data = value.get("data") or {}
+        data = value.get("data")
+        if not isinstance(data, dict):
+            data = {}
         complete = str(data.get("complete_status") or "")
-        reward = int(data.get("reward_point") or 0)
+        reward = integer(data.get("reward_point")) or 0
         if complete.upper() == "SUCCESS" and reward > 0:
-            gained.append("%s+%s" % (label, reward))
+            gained.append("%s+%s" % (task_label, reward))
             total += reward
-        else:
+        elif ((complete.upper() == "SUCCESS" and reward == 0)
+              or complete.upper() == "BADGE_ALREADY_RECEIVED"):
             already = True
+        else:
+            unresolved.append("%s：上游未确认完成（%s）" % (task_label, complete))
     if gained:
-        return True, "签到完成：%s（共 +%s）" % ("、".join(gained), total)
+        message = "签到完成：%s（共 +%s）" % ("、".join(gained), total)
+        if failures:
+            message += "；部分任务失败：%s" % "；".join(failures)
+        if unresolved:
+            message += "；%s" % "；".join(unresolved)
+        return True, message
     if already:
-        return True, "今日积分已领过（接口幂等，无新增）"
-    return True, "本次没有可领取的每日任务（活动可能未开始或已结束）"
+        message = "今日积分已领过（接口幂等，无新增）"
+        if failures:
+            message += "；部分任务失败：%s" % "；".join(failures)
+        if unresolved:
+            message += "；%s" % "；".join(unresolved)
+        return True, message
+    if failures:
+        return False, "每日任务领取失败：%s" % "；".join(failures)
+    if unresolved:
+        return False, "上游未确认完成：%s" % "；".join(unresolved)
+    return True, "本次没有可领取的每日任务"
+
+
+def checkin_one(name, bduss, ptoken, web_stoken, opener=None, extras=None):
+    """默认执行 30 天签到，返回 (ok, 摘要文本)。"""
+    return checkin_thirty_days(bduss, web_stoken, extras, opener, ptoken)
 
 
 # ────────────────────────── 账号 / 推送 / 入口 ──────────────────────────
+def cookie_input_text(value):
+    """把 Cookie 头、Cookie 编辑器 JSON 或对象统一成可解析文本。"""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return ""
+
+
+def account_from_cookie(name, cookie, business_stoken="", index=1):
+    """从一条完整 Cookie 构造账号；web/business 两个 STOKEN 永不混用。"""
+    bduss, ptoken, web_stoken, extras = parse_cookie_parts(cookie_input_text(cookie))
+    if len(bduss) < MIN_BDUSS_LEN:
+        log("⚠️  [配置] 跳过第 %s 个账号：Cookie 缺少有效 BDUSS" % index)
+        return None
+    return {
+        "name": str(name or ("账号%d" % index)),
+        "bduss": bduss,
+        "ptoken": ptoken,
+        "web_stoken": web_stoken,
+        "business_stoken": str(business_stoken or "").strip(),
+        "extras": extras,
+    }
+
+
+def accounts_from_json(raw):
+    """解析 KUKU_TOKENS JSON 数组；每条用 cookie + business_stoken 描述。"""
+    try:
+        value = json.loads(raw)
+    except Exception as e:
+        log("⚠️  [配置] KUKU_TOKENS 不是合法 JSON：%s" % e)
+        return []
+    if isinstance(value, dict) and isinstance(value.get("accounts"), list):
+        value = value["accounts"]
+    elif isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, list):
+        log("⚠️  [配置] KUKU_TOKENS JSON 应为账号数组")
+        return []
+
+    accounts = []
+    metadata = {"name", "remark", "note", "business_stoken", "businessStoken", "stoken"}
+    for index, item in enumerate(value, 1):
+        if isinstance(item, str):
+            account = account_from_cookie("账号%d" % index, item, "", index)
+        elif isinstance(item, dict):
+            name = item.get("name") or item.get("remark") or item.get("note")
+            business_stoken = (
+                item.get("business_stoken")
+                or item.get("businessStoken")
+                or item.get("stoken")
+                or ""
+            )
+            cookie = item.get("cookie")
+            if cookie is None:
+                cookie = item.get("cookieHeader")
+            if cookie is None:
+                cookie = {
+                    key: val
+                    for key, val in item.items()
+                    if key not in metadata and key not in ("cookie", "cookieHeader")
+                }
+            account = account_from_cookie(name, cookie, business_stoken, index)
+        else:
+            log("⚠️  [配置] 跳过第 %s 个账号：KUKU_TOKENS 条目类型不正确" % index)
+            continue
+        if account:
+            accounts.append(account)
+    return accounts
+
+
+def accounts_from_lines(raw):
+    """解析换行/& 分隔的 KUKU_TOKENS；支持完整 Cookie 与旧位置字段。"""
+    accounts = []
+    for index, line in enumerate(re.split(r"[\n&]+", raw), 1):
+        line = line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) == 1:
+            if "=" not in parts[0]:
+                log("⚠️  [配置] 跳过第 %s 个账号：无法识别 Cookie" % index)
+                continue
+            account = account_from_cookie("账号%d" % index, parts[0], "", index)
+        elif "=" in parts[1] or ";" in parts[1]:
+            business_stoken = parts[2] if len(parts) > 2 else ""
+            account = account_from_cookie(parts[0], parts[1], business_stoken, index)
+        elif len(parts) >= 3:
+            # 兼容旧格式：备注|BDUSS|PTOKEN[|旧 freepoint 业务 STOKEN]
+            cookie = "BDUSS=%s; PTOKEN=%s" % (parts[1], parts[2])
+            business_stoken = parts[3] if len(parts) > 3 else ""
+            account = account_from_cookie(parts[0], cookie, business_stoken, index)
+        else:
+            log("⚠️  [配置] 跳过第 %s 个账号：应为 备注|完整Cookie|业务STOKEN" % index)
+            continue
+        if account:
+            accounts.append(account)
+    return accounts
+
+
 def load_accounts():
     raw = os.getenv("KUKU_TOKENS", "").strip()
     if raw:
-        accounts = []
-        for line in re.split(r"[\n&]+", raw):
-            line = line.strip()
-            if not line:
-                continue
-            parts = [p.strip() for p in line.split("|")]
-            if len(parts) < 3:
-                log("⚠️  [配置] 跳过格式不正确的条目（应为 备注|BDUSS|PTOKEN[|STOKEN]）")
-                continue
-            accounts.append({"name": parts[0] or ("账号%d" % (len(accounts) + 1)),
-                             "bduss": parts[1], "ptoken": parts[2],
-                             "stoken": parts[3] if len(parts) > 3 else ""})
-        return accounts
+        if raw[:1] in "[{":
+            return accounts_from_json(raw)
+        return accounts_from_lines(raw)
     cookie = os.getenv("KUKU_COOKIES", "").strip()
     if not cookie:
         return []
-    bduss, ptoken, _ = parse_cookie(cookie)
-    return [{"name": "账号1", "bduss": bduss, "ptoken": ptoken,
-             "stoken": os.getenv("KUKU_STOKEN", "").strip()}]
+    account = account_from_cookie(
+        "账号1",
+        cookie,
+        os.getenv("KUKU_STOKEN", "").strip(),
+        1,
+    )
+    return [account] if account else []
 
 
 def notify(text, title="KukuAI 签到"):
@@ -459,16 +774,26 @@ def _post_json(url, payload):
 def main():
     only = ""
     token_mode = False
+    legacy_freepoint = False
+    version_mode = False
     for i, arg in enumerate(sys.argv[1:], 1):
         if arg == "--only" and i < len(sys.argv) - 1:
             only = sys.argv[i + 1]
         elif arg == "--token":
             token_mode = True
+        elif arg == "--legacy-freepoint":
+            legacy_freepoint = True
+        elif arg == "--version":
+            version_mode = True
+    if version_mode:
+        log("KukuAI Daily v%s" % VERSION)
+        return 0
     accounts = load_accounts()
     if not accounts:
         log("❌ 未配置 KUKU_COOKIES（或 KUKU_TOKENS）。")
-        log("   获取方法：登录 kuku.baidu.com/genflowpro 后，从浏览器开发者工具复制 Cookie；")
-        log("   缺少 PTOKEN 时无法换发会话令牌，请确认复制了完整 Cookie。")
+        log("   获取方法：登录 kuku.baidu.com/operation/activitys/kukuPcSignAct/main "
+            "后，从浏览器开发者工具复制完整 Cookie。")
+        log("   默认 30 天签到使用网页 Cookie；--legacy-freepoint 还需要 PTOKEN/STOKEN。")
         return 1
     if token_mode:
         opener = proxy_opener()
@@ -477,9 +802,10 @@ def main():
                 continue
             log("🔑 [%s] 换发会话令牌 ..." % acc["name"])
             try:
-                stoken, source = resolve_stoken(acc["bduss"], acc["ptoken"], acc["stoken"], opener)
+                stoken, source = resolve_stoken(
+                    acc["bduss"], acc["ptoken"], acc.get("business_stoken", ""), opener)
                 log("   STOKEN=%s  （来源：%s）" % (stoken, source))
-                log("   把它填进环境变量 KUKU_STOKEN（多账号用 KUKU_TOKENS 的第 4 段）即可长期使用。")
+                log("   该业务 STOKEN 只供 --legacy-freepoint；30 天签到仍使用 Cookie 内的网页 STOKEN。")
             except Exception as e:
                 log("   ❌ %s" % e)
                 return 1
@@ -487,6 +813,7 @@ def main():
     opener = proxy_opener()
     lines = []
     ok_count = 0
+    mode = "旧 freepoint 任务" if legacy_freepoint else "库库 30 天签到"
     for idx, acc in enumerate(accounts, 1):
         if only and only != str(idx):
             continue
@@ -494,8 +821,17 @@ def main():
         if len(bduss) < MIN_BDUSS_LEN:
             lines.append("❌ %s：BDUSS 不完整" % acc["name"])
             continue
-        log("📱 [%s] 开始签到（BDUSS %s）" % (acc["name"], mask(bduss)))
-        ok, msg = checkin_one(acc["name"], bduss, acc["ptoken"], acc["stoken"], opener)
+        log("📱 [%s] 开始%s（BDUSS %s）" % (
+            acc["name"], mode, mask(bduss)))
+        extras = acc.get("extras") or []
+        if legacy_freepoint:
+            ok, msg = legacy_freepoint_one(
+                acc["name"], bduss, acc["ptoken"], acc.get("business_stoken", ""),
+                opener, extras)
+        else:
+            ok, msg = checkin_one(
+                acc["name"], bduss, acc["ptoken"], acc.get("web_stoken", ""),
+                opener, extras)
         ok_count += 1 if ok else 0
         lines.append(("%s %s：%s" % ("✅" if ok else "❌", acc["name"], msg)))
         log("   " + lines[-1])
