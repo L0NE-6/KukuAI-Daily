@@ -1,5 +1,16 @@
 # 更新日志
 
+## v1.4.0（2026-11-07）
+
+- 签到主链路迁移到现行 `kukuai30`：`userreport` 获取 `uk` → homepage 预读 → 按需 signin → homepage 复读。
+- 固定签到活动 `tid=291651792210`，对齐客户端 `1.7.3.107` query、`KuKuGenFlow/1.6.32` User-Agent、`/genflowpro` Referer 与 JSON 空对象 body。
+- 成功判据改为唯一可信的签到后 homepage `signed_today=true`；动作 `errno=0`、HTTP 200 或 `errno=10152` 都不能单独代表成功。
+- `errno=8001` 等拒绝原因在复读仍为 `signed_today=false` 时如实透出，不再伪装成“今日已签到”。
+- 退役 `getJsToken`、`activityTid`、`aid=15459` 与 `jsToken` 主链路；旧 freepoint 仍需显式 `--legacy-freepoint`。
+- `PTOKEN` 存在时先换发 `genflowpro` 业务 STOKEN；换发失败、缺 `uk`、缺 `bdstoken` 或面板外层 `errno` 异常均在错误请求前明确终止。
+- 六语文档与协议证据同步到 `watchern/Agent2Providers` `v3.4.2.1` / commit `5d2b55b`。
+- 验证：unittest、pytest、py_compile、ruff、YAML、diff-check 与敏感扫描；全部使用假响应，不含真实账号 Cookie。
+
 ## v1.3.0（2026-11-05）
 
 - 主链路切换到「库库 30 天签到」：活动配置 → 活动首页 → `getJsToken` → 签到，固定活动页 Referer 与 `aid=15459`。

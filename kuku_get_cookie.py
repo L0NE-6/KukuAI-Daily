@@ -13,8 +13,8 @@ KukuAI 登录态获取工具
   · KUKU_COOKIES=…     直接填环境变量
   · KUKU_STOKEN=…      旧 freepoint 的业务 STOKEN，仅 --legacy-freepoint 使用
 
-说明：默认 30 天签到只使用完整网页 Cookie，其中必须包含 BDUSS 与网页 STOKEN。
-      KUKU_STOKEN 不会覆盖网页 STOKEN。旧 freepoint 的业务令牌按产品签发，
+说明：默认签到推荐完整网页 Cookie，其中至少包含 BDUSS；PTOKEN 用于换发业务 STOKEN。
+      KUKU_STOKEN 仍只供旧 freepoint。旧 freepoint 的业务令牌按产品签发，
       本工具用官方引擎同款 MD5 签名换发（不再依赖 genflowengine.dll）。
 """
 
@@ -104,13 +104,13 @@ def read_from_client():
         print("❌ 数据库里没有找到 BDUSS，说明客户端还没登录。")
         return None
     bduss, _, web_stoken, _ = parse_cookie_parts(cookie)
-    note = "" if web_stoken else "；缺少网页 STOKEN，请重新登录客户端后再导出"
+    note = "" if web_stoken else "；未发现 STOKEN，将优先使用 PTOKEN 换发"
     print("✅ 已从客户端读取完整 Cookie（BDUSS %s%s）" % (bduss[-4:], note))
     return cookie
 
 
 def read_pasted():
-    print("请粘贴完整 Cookie（必须含 BDUSS 与网页 STOKEN；也接受 Cookie 编辑器 JSON），粘贴完按回车：")
+    print("请粘贴完整 Cookie（至少含 BDUSS，推荐含 PTOKEN；也接受 Cookie 编辑器 JSON），粘贴完按回车：")
     try:
         text = input().strip()
     except EOFError:
@@ -136,7 +136,7 @@ def main():
     print("KUKU_COOKIES=%s" % cookie)
     if not web_stoken:
         print()
-        print("⚠️ Cookie 缺少网页 STOKEN；默认 30 天签到会明确失败，请重新导出完整 Cookie。")
+        print("⚠️ Cookie 缺少 STOKEN；建议保留 PTOKEN 以便默认签到换发业务令牌。")
     print()
     if args.stoken:
         print("KUKU_STOKEN=%s" % args.stoken)
@@ -158,8 +158,8 @@ def main():
     print()
     print("KUKU_STOKEN=%s" % stoken)
     print()
-    print("该业务 STOKEN 只供 kuku_daily.py --legacy-freepoint；")
-    print("默认 30 天签到仍使用 KUKU_COOKIES 内的网页 STOKEN。")
+    print("该业务 STOKEN 只供 kuku_daily.py --legacy-freepoint 与 --token。")
+    print("默认签到会在运行时按完整 Cookie 自动准备会话。")
     return 0
 
 

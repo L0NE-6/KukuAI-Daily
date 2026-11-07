@@ -1,139 +1,89 @@
-# KukuAI 30 天签到协议证据
+# KukuAI kukuai30 签到协议证据
 
 ## 基线
 
-- 本项目版本：`v1.3.0`
-- 仓库：`ProvidersPlugin/Agent2Providers`
-- tag：`v3.4.2`
-- commit：`3055f416841c1393ec04294a702603fd41e840aa`
-- tag 时间：`2026-11-05T16:38:49+08:00`
-- 使用方式：只读 Rust 文件作为 HTTP 契约证据，不复制源码、注释或内部抽象。
+- 本项目版本：`v1.4.0`
+- 上游仓库：`watchern/Agent2Providers`
+- 上游 release：`v3.4.2.1`
+- 上游 commit：`5d2b55bc59d9dc5da214d2bff4c09e5679d77414`
+- 证据文件：`crates/providers/src/providers/kuku/{tasks,credentials,session}.rs`
+- 使用方式：只读取公开 HTTP 契约与字段语义；本项目为独立 Python 实现。
 
-上游证据文件：
-
-- `crates/providers/src/providers/kuku/checkin.rs`
-- `crates/providers/src/providers/kuku/credentials.rs`
-- `crates/providers/src/providers/kuku/mod.rs`
-
-## 主签到链路
-
-| 顺序 | 方法 | 路径 | 用途 |
-| :---: | :--- | :--- | :--- |
-| 1 | `GET` | `/act/api/conf?conf_key=kukuSignConf` | 读取 `activityTid` 与 `signPoint` |
-| 2 | `GET` | `/act/v2/kukuai30/homepage?tid=<activityTid>` | 读取 `signed_today`、连续天数、累计天数 |
-| 3 | `GET` | `/operation/activitys/api/getJsToken` | 获取风控 JS token |
-| 4 | `POST` | `/act/v2/kukuai30/signin?tid=<activityTid>&jsToken=<token>&aid=15459` | 提交签到 |
-
-根地址：
+## 现行链路
 
 ```text
-https://kuku.baidu.com
+GET  /api/genflowpro/common/userreport?clienttype=400&app_id=123971023&web=1&channel=chunlei&version=1.4.4
+POST /act/v2/kukuai30/homepage?uid=<uk>&tid=291651792210&<client-query>
+POST /act/v2/kukuai30/signin?uid=<uk>&tid=291651792210&<client-query>
+POST /act/v2/kukuai30/homepage?uid=<uk>&tid=291651792210&<client-query>
 ```
 
-固定请求头：
+固定客户端参数：
+
+```text
+app_id=123971023
+clienttype=401
+version=1.7.3.107
+channel=chunlei
+tid=291651792210
+```
+
+`uid` 不是 Cookie 字段；它来自 `userreport.data.uk`，支持字符串或整数。
+
+## 请求形态
 
 ```http
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36
-Referer: https://kuku.baidu.com/operation/activitys/kukuPcSignAct/main
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) KuKuGenFlow/1.6.32 Chrome/146.0.7680.216 Electron/41.10.1 Safari/537.36
+Referer: https://kuku.baidu.com/genflowpro
 Origin: https://kuku.baidu.com
 Accept-Language: zh-CN,zh;q=0.9
-Cookie: BDUSS=...; STOKEN=<网页STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...; gfprotpl=genflowpro
+Accept: application/json
+Content-Type: application/json
+Cookie: BDUSS=...; STOKEN=<business-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...; gfprotpl=genflowpro
 ```
 
-签到 POST 使用空表单 body，`Content-Type` 为：
-
-```text
-application/x-www-form-urlencoded;charset=UTF-8
-```
-
-## 双 STOKEN 边界
-
-`checkin.rs` 先取得账号 Cookie 快照，然后直接执行 `signin_thirty_days(&credentials)`。只有在 30 天链路不可用并进入旧 freepoint 分支后，代码才调用 `with_business_stoken(&credentials)`。
-
-上游 v3.4.2 会把旧任务作为自动备用路径；本项目为青龙/Actions 的确定性验收口径，改为只允许显式 `--legacy-freepoint` 进入旧链路，默认流程不自动回退。
-
-因此本项目固定两条边界：
-
-| 链路 | Cookie | STOKEN |
-| :--- | :--- | :--- |
-| 30 天签到 | 完整网页 Cookie | Cookie 内网页 `STOKEN` |
-| 旧 freepoint | 业务请求 Cookie | `KUKU_STOKEN` / 多账号 `business_stoken` / 换发结果 |
-
-实现约束：
-
-- `KUKU_STOKEN` 是业务 STOKEN，不覆盖 Cookie 内网页 `STOKEN`。
-- 30 天链路缺少网页 `STOKEN` 时明确失败，提示重新导出完整 Cookie。
-- 30 天链路不读取本机业务 STOKEN 缓存。
-- `PTOKEN`、`BAIDUID`、`PANPSC` 等同一会话 Cookie 字段保留在网页 Cookie 中。
-- 旧 freepoint 只在 `--legacy-freepoint` 显式启用。
-
-## 活动配置
-
-响应读取：
+homepage 与 signin 都是 JSON POST，请求体固定为：
 
 ```json
-{
-  "data": [
-    {
-      "conf_value": {
-        "activityTid": "73001",
-        "signPoint": 10
-      }
-    }
-  ]
-}
+{}
 ```
 
-规则：
+不存在 `getJsToken`、`activityTid`、`aid=15459` 或 `jsToken` 参数。
 
-- `activityTid` 接受字符串或整数。
-- `signPoint` 接受整数或十进制字符串。
-- `signPoint` 缺失时仅用于展示默认 `10`，不影响签到成功判据。
+## 会话与 STOKEN
 
-## 风控 Token
+1. Cookie 中存在 `PTOKEN` 时，使用 `BDUSS + PTOKEN` 换发 `genflowpro` 业务 STOKEN。
+2. 换发失败直接报错，不静默沿用旧令牌。
+3. 没有 `PTOKEN` 时，允许使用完整 Cookie 中的 `STOKEN` 读取 `userreport`。
+4. 两者都没有时，本地直接报“缺少可用会话令牌”。
+5. `KUKU_STOKEN` / `business_stoken` 仍只供显式 `--legacy-freepoint` 和 `--token` 使用。
 
-`getJsToken` 的有效值位于：
+`userreport` 必须同时满足：
 
-```text
-data.jsToken
-```
+- HTTP 200
+- `errno=0`
+- `data.bdstoken` 非空
+- `data.uk` 是非布尔字符串或整数，且非空
 
-实际内容是 URL 编码的 JS 片段：
+## 成功判据
 
-```text
-function fn(a){...};fn("HEX_TOKEN")
-```
+签到前面板：
 
-本项目只做 `%XX` 解码并取最后一对双引号中的值，不执行 JavaScript。
+- `signed_today is true`：返回“今日已签到”，不发送 signin。
+- 其他值：继续发送一次 signin。
 
-## 成功与中性判据
+signin 动作响应不是最终成功依据。脚本保存其中的 `errno / show_msg / errmsg / message` 作为拒绝原因，等待 `0.9s` 后再次读取 homepage。
 
-签到响应示例：
-
-```json
-{
-  "errno": 0,
-  "data": {
-    "continuous": 3,
-    "signed_today": true
-  }
-}
-```
-
-| 条件 | 本地结论 |
+| 签到后 homepage | 结论 |
 | :--- | :--- |
-| `errno=0` 且 `data.signed_today is true` | 唯一签到成功 |
-| 首页 `data.signed_today is true` | 中性完成，不再请求 token / POST |
-| `errno=10152` | 中性完成，今日已签 |
-| `errno=8001` | 风控失败 |
-| `errno=8002` | 风控失败 |
-| `errno=0` 但缺少 `signed_today` | 失败 |
-| `errno=0` 但 `signed_today=false` 或非布尔值 | 失败 |
-| 其它 `errno` | 失败 |
+| `signed_today is true` | 本次签到成功 |
+| `signed_today is false` | 失败 |
+| 缺 `signed_today` | 失败 |
+| 外层 `errno != 0`、缺 `data`、HTTP 非 200 | 失败 |
 
-HTTP 200 不能单独作为成功证据。
+动作返回 `errno=10152` 不能覆盖复读结果。动作返回 `errno=8001` 且复读仍为 false 时，错误消息保留服务端原文，例如“账号异常，无法参与活动”。
 
-## 多账号 Cookie
+## 多账号
 
 推荐每账号保存完整 Cookie：
 
@@ -141,18 +91,19 @@ HTTP 200 不能单独作为成功证据。
 [
   {
     "name": "main",
-    "cookie": "BDUSS=...; STOKEN=<web-stoken>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "cookie": "BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...",
     "business_stoken": ""
   }
 ]
 ```
 
-业务 STOKEN 只在 `--legacy-freepoint` 或 `--token` 模式读取，不参与 30 天链路的请求头构造。
+默认签到只使用 `cookie` 与换发结果；`business_stoken` 不参与 `kukuai30` 请求头构造。
 
 ## 未采用项
 
-- 不把 `errno=0` 单独当成成功。
-- 不把缺省 `signed_today` 当成 `true`。
-- 不让 `KUKU_STOKEN` 替代网页 STOKEN。
-- 不在 30 天链路失败时自动切到旧 freepoint。
-- 不把 HTTP 状态码代替业务响应判据。
+- 不把动作响应 HTTP 200 当成功。
+- 不把动作 `errno=0` 当成功。
+- 不把 `errno=10152` 当成功。
+- 不复用已经退役的 `getJsToken` 链路。
+- 不在 `kukuai30` 失败时自动切换到旧 freepoint。
+- 不生成空 `uid=` 请求。

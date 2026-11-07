@@ -4,7 +4,7 @@
 
 # 🧩 KukuAI Daily
 
-**库库 AI（百度文库 GenFlowPro）「库库 30 天签到」单文件脚本，支持多账号、青龙与 GitHub Actions。**
+**库库 AI（百度文库 GenFlowPro）现行 `kukuai30` 每日签到单文件脚本，支持多账号、青龙与 GitHub Actions。**
 
 [简体中文](README.md) · [English](docs/README.en.md) · [繁體中文](docs/README.zh-Hant.md) · [日本語](docs/README.ja.md) · [한국어](docs/README.ko.md) · [Português (BR)](docs/README.pt-BR.md)
 
@@ -15,7 +15,7 @@
 <img src="https://img.shields.io/badge/GitHub%20Actions-Supported-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" />
 <img src="https://img.shields.io/badge/License-MIT-F472B6?style=for-the-badge" />
 
-[✨ 30 秒速览](#quick-overview) · [🔁 签到流程](#flow) · [🔑 凭据格式](#credentials) · [🚀 部署](#deploy) · [✅ 成功判据](#result) · [🧪 验证](#verify) · [✦ 星轨](#star-trail)
+[✨ 快速概览](#quick-overview) · [🔁 签到流程](#flow) · [🔑 凭据格式](#credentials) · [🚀 部署](#deploy) · [✅ 成功判据](#result) · [🧪 验证](#verify) · [✦ 星轨](#star-trail)
 
 </div>
 
@@ -32,16 +32,16 @@
 ---
 
 <a id="quick-overview"></a>
-## ✨ 30 秒速览
+## ✨ 快速概览
 
 | 维度 | 说明 |
 | :--- | :--- |
-| **主用途** | 执行库库 AI「库库 30 天签到」。 |
-| **默认链路** | 配置 → 活动首页 → `getJsToken` → 签到。 |
+| **主用途** | 执行库库 AI 客户端同款 `kukuai30` 每日签到。 |
+| **默认链路** | `userreport` 获取 `uk` → homepage 预读 → 按需 signin → homepage 复读。 |
 | **输入** | 单账号 `KUKU_COOKIES`，或多账号 `KUKU_TOKENS`。 |
-| **成功判据** | 签到响应 `errno=0` 且 `data.signed_today` 为布尔 `true`。 |
-| **中性状态** | `errno=10152` 视为今日已签；首页 `signed_today=true` 时不重复提交。 |
-| **失败状态** | `errno=8001` / `8002` 按上游风控失败处理。 |
+| **成功判据** | 签到后 homepage 复读的 `signed_today` 必须为布尔 `true`。 |
+| **中性状态** | 签到前 homepage 已显示 `signed_today=true`，不重复提交。 |
+| **失败状态** | 动作响应 `errno=8001` 等拒绝原因会如实显示；复读未签仍算失败。 |
 | **旧链路** | 仅 `--legacy-freepoint` 显式启用，不自动回退。 |
 | **依赖** | Python 3.8+，仅标准库。 |
 
@@ -49,37 +49,34 @@
 ## 🔁 默认签到流程
 
 ```text
-GET  /act/api/conf?conf_key=kukuSignConf
-GET  /act/v2/kukuai30/homepage?tid=<activityTid>
-GET  /operation/activitys/api/getJsToken
-POST /act/v2/kukuai30/signin?tid=<activityTid>&jsToken=<token>&aid=15459
+GET  /api/genflowpro/common/userreport?<client-query>
+POST /act/v2/kukuai30/homepage?uid=<uk>&tid=291651792210&<client-query>
+POST /act/v2/kukuai30/signin?uid=<uk>&tid=291651792210&<client-query>
+POST /act/v2/kukuai30/homepage?uid=<uk>&tid=291651792210&<client-query>
 ```
 
-所有请求固定使用活动页 Referer：
+`uk` 来自 `userreport.data.uk`。默认流程先读 homepage；已经签到就结束，否则发送一次 signin，等待后再次读取 homepage。请求使用客户端同款 User-Agent 和 `/genflowpro` Referer，POST body 为 `{}`。
 
-```text
-https://kuku.baidu.com/operation/activitys/kukuPcSignAct/main
-```
-
-只有当签到响应同时满足 `errno=0` 和 `data.signed_today=true` 才算签到成功。HTTP 200、空响应或缺少 `signed_today` 都不能代替业务成功。
+旧 `getJsToken`、`activityTid` 与 `aid=15459` 链路已退役。HTTP 200、动作响应 `errno=0`、`errno=10152` 都不能单独证明今日签到成功，唯一判据是最后 homepage 复读中的 `signed_today=true`。
 
 <a id="credentials"></a>
 ## 🔑 凭据模型
 
-脚本严格区分两种 STOKEN：
+推荐提供同一会话的完整 Cookie。存在 `PTOKEN` 时，脚本会先通过现有换发链路取得 `genflowpro` 业务 STOKEN；换发失败会明确终止，不静默降级。
 
 | 名称 | 来源 | 用途 |
 | :--- | :--- | :--- |
-| **网页 STOKEN** | `KUKU_COOKIES` / 多账号 Cookie 内的 `STOKEN` | 仅供 30 天签到；必须来自同一份完整网页 Cookie。 |
-| **业务 STOKEN** | `KUKU_STOKEN`、多账号 `business_stoken`、本机缓存或换发结果 | 仅 `--legacy-freepoint` 使用。 |
+| **会话 Cookie** | `BDUSS`、`PTOKEN`、`STOKEN`、`BAIDUID`、`PANPSC` 等 | 用于换发和读取 `userreport.data.uk`。 |
+| **运行期业务 STOKEN** | 由 `BDUSS + PTOKEN` 换发 | 本次 `kukuai30` 请求使用，不打印。 |
+| **旧 freepoint STOKEN** | `KUKU_STOKEN` / 多账号 `business_stoken` | 仅 `--legacy-freepoint` 与 `--token` 使用。 |
 
 > [!IMPORTANT]
-> `KUKU_STOKEN` 不会覆盖网页 `STOKEN`。如果 Cookie 缺少网页 `STOKEN`，默认 30 天签到会直接失败并提示重新导出完整 Cookie，不会静默换成业务 STOKEN。
+> `KUKU_STOKEN` 不会替代会话 Cookie。完整 Cookie 缺少 `PTOKEN` 时，脚本会使用其中的 `STOKEN` 尝试读取 `userreport`；上游拒绝时会明确报会话错误。
 
 ### 单账号
 
 ```text
-KUKU_COOKIES=BDUSS=...; STOKEN=<网页STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...
+KUKU_COOKIES=BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...
 ```
 
 `KUKU_STOKEN` 可选，仅用于旧 freepoint：
@@ -90,18 +87,18 @@ KUKU_STOKEN=<旧freepoint业务STOKEN>
 
 ### 多账号
 
-推荐使用 JSON 数组。每条账号把完整 Cookie 放进 `cookie`，业务 STOKEN 单独放进 `business_stoken`：
+推荐使用 JSON 数组。每条账号把完整 Cookie 放进 `cookie`，旧 freepoint 业务 STOKEN 可单独放进 `business_stoken`：
 
 ```json
 [
   {
     "name": "主号",
-    "cookie": "BDUSS=...; STOKEN=<网页STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "cookie": "BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...",
     "business_stoken": ""
   },
   {
     "name": "副号",
-    "cookie": "BDUSS=...; STOKEN=<网页STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...",
+    "cookie": "BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...",
     "business_stoken": ""
   }
 ]
@@ -110,11 +107,11 @@ KUKU_STOKEN=<旧freepoint业务STOKEN>
 也支持一行一个账号：
 
 ```text
-主号|BDUSS=...; STOKEN=<网页STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...|旧freepoint业务STOKEN（可空）
-副号|BDUSS=...; STOKEN=<网页STOKEN>; PTOKEN=...; BAIDUID=...; PANPSC=...|旧freepoint业务STOKEN（可空）
+主号|BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...|旧freepoint业务STOKEN（可空）
+副号|BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...|旧freepoint业务STOKEN（可空）
 ```
 
-旧位置格式 `备注|BDUSS|PTOKEN[|业务STOKEN]` 仍可解析，但它不包含网页 STOKEN 与其它 Cookie，因此只适合显式 `--legacy-freepoint`；默认 30 天签到会明确报缺少网页 STOKEN。
+旧位置格式 `备注|BDUSS|PTOKEN[|业务STOKEN]` 仍可解析；包含 `PTOKEN` 时可参与业务 STOKEN 换发，但缺少其它同会话 Cookie 时稳定性较差，建议重新导出完整 Cookie。
 
 <a id="deploy"></a>
 ## 🚀 青龙 / Actions
@@ -132,9 +129,9 @@ GitHub Actions Secrets：
 
 | Secret | 必填 | 说明 |
 | :--- | :---: | :--- |
-| `KUKU_COOKIES` | 单账号 | 完整网页 Cookie，必须含网页 `STOKEN`。 |
+| `KUKU_COOKIES` | 单账号 | 推荐包含 `BDUSS`、`PTOKEN` 与其它同会话 Cookie。 |
 | `KUKU_TOKENS` | 多账号 | 推荐 JSON 数组；配置后优先于单账号变量。 |
-| `KUKU_STOKEN` | 可选 | 仅单账号旧 freepoint 使用的业务 STOKEN；默认 30 天链路不读取。 |
+| `KUKU_STOKEN` | 可选 | 仅单账号旧 freepoint / `--token` 使用。 |
 | `QYWX_TOKEN` | 可选 | 企业微信机器人 key。 |
 | `PLUSPLUS_TOKEN` | 可选 | PushPlus token。 |
 
@@ -143,12 +140,12 @@ GitHub Actions Secrets：
 
 | 上游结果 | 本地处理 |
 | :--- | :--- |
-| `errno=0` 且 `data.signed_today=true` | 本次签到成功。 |
-| 首页 `signed_today=true` | 中性完成，不再 POST。 |
-| `errno=10152` | 中性完成，视为今日已签。 |
-| `errno=8001` / `8002` | 风控失败，提示重新登录或重新导出 Cookie。 |
-| 其它 `errno` | 失败，保留脱敏后的业务原因。 |
-| 缺少 `signed_today` / 非布尔 `true` | 失败，不把缺省值当成功。 |
+| 签到前 homepage `signed_today=true` | 中性完成，不再发送 signin。 |
+| signin 后 homepage `signed_today=true` | 本次签到成功。 |
+| signin 后 homepage `signed_today=false` | 失败；保留动作响应中的 `errno / errmsg`。 |
+| 动作返回 `errno=10152` 但复读仍为 false | 失败，不再把 `10152` 直接当已签。 |
+| 动作返回 `errno=8001` | 如实显示服务端拒绝原因。 |
+| homepage 缺 `uk`、缺 `data` 或响应异常 | 失败，不发送后续无效请求。 |
 
 只要至少一个账号得到成功或中性完成，主进程通常返回 `0`；全部账号失败时返回非零，便于青龙和 Actions 识别。
 
@@ -156,7 +153,7 @@ GitHub Actions Secrets：
 
 | 参数 | 作用 |
 | :--- | :--- |
-| 无 | 运行所有账号的库库 30 天签到。 |
+| 无 | 运行所有账号的现行 `kukuai30` 签到。 |
 | `--only N` | 只运行第 N 个账号。 |
 | `--legacy-freepoint` | 显式运行旧 freepoint 任务，使用业务 STOKEN。 |
 | `--token` | 换发并输出旧 freepoint 业务 STOKEN，不执行签到。 |
@@ -171,7 +168,7 @@ python kuku_get_cookie.py --exchange
 python kuku_get_cookie.py --paste --exchange
 ```
 
-默认 30 天签到不需要换发业务 STOKEN。`--exchange` 和 `kuku_get_cookie.py --stoken` 产出的 `KUKU_STOKEN` 只供旧 freepoint 使用。工具读取客户端 Cookie 数据库时会保留百度域完整字段，包括 `BAIDUID`、`PTOKEN`、`PANPSC` 等。
+默认签到会自动从 `PTOKEN` 换发本次运行使用的业务 STOKEN。`--exchange` 和 `kuku_get_cookie.py --stoken` 单独打印的 `KUKU_STOKEN` 只供旧 freepoint 使用。工具读取客户端 Cookie 数据库时会保留百度域完整字段，包括 `BAIDUID`、`PTOKEN`、`PANPSC` 等。
 
 <a id="verify"></a>
 ## 🧪 本地验证
@@ -183,20 +180,20 @@ python -m py_compile kuku_daily.py kuku_get_cookie.py tests\_loader.py tests\tes
 ruff check .
 ```
 
-测试全部使用假响应，不访问真实签到接口。覆盖四步主链路、严格成功判据、10152、8001/8002、旧链路显式开关、双 STOKEN 隔离、多账号完整 Cookie/Extras、脱敏和通知汇总。
+测试全部使用假响应，不访问真实签到接口。覆盖 `userreport → homepage → signin → homepage` 主链路、字符串/整数 `uk`、缺 `uk` 短路、签到后复读、`10152` 不得覆盖复读、`8001` 拒绝原因、旧链路显式开关、多账号 Cookie/Extras、脱敏和通知汇总。
 
 协议证据与字段说明见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
 
 ## 🔒 隐私
 
 - 日志只显示脱敏后的 BDUSS 尾部。
-- Cookie、网页 STOKEN、业务 STOKEN 不从外部服务器收集。
+- Cookie、会话 STOKEN 与换发结果不从外部服务器收集。
 - `.kuku_stoken.json`、环境变量、完整 Cookie 和多账号导出文件不要提交到仓库、Issue 或公开日志。
 - `--token` 会主动打印业务 STOKEN，只应在可信终端中使用。
 
 ## 📦 版本与发布
 
-- 当前仓库版本：`v1.3.0`。
+- 当前仓库版本：`v1.4.0`。
 - Release 状态：由主线程统一发布，本文档不宣称已经上线。
 - Release 页：[L0NE-6/KukuAI-Daily Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)。
 - 更新记录：[CHANGELOG.md](CHANGELOG.md)。

@@ -5,7 +5,7 @@ import unittest
 from contextlib import ExitStack
 from pathlib import Path
 from unittest import mock
-from urllib.parse import parse_qs, quote, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -17,93 +17,97 @@ KD = load_script("kuku_daily_contract", "kuku_daily.py")
 GC = load_script("kuku_get_cookie_contract", "kuku_get_cookie.py")
 
 
-def conf_payload(tid="73001", point=10):
+def userreport_payload(uk="123456"):
     return (200, {
         "errno": 0,
-        "data": [{"conf_value": {"activityTid": tid, "signPoint": point}}],
+        "data": {
+            "bdstoken": "dummy-bdstoken",
+            "uinfo": "dummy-uinfo",
+            "uk": uk,
+        },
     })
 
 
-def home_payload(signed_today=False, continuous=2, total=2):
+def home_payload(signed_today=False, continuous=2, next_days=28):
     return (200, {
         "errno": 0,
         "data": {
             "signed_today": signed_today,
             "continuous_days": continuous,
-            "total_days": total,
+            "next_reward_days": next_days,
+            "next_reward_award": "网盘会员天卡",
         },
     })
 
 
-def token_payload(token="deadbeef"):
-    js = quote('function fn(a){return a};fn("%s")' % token)
-    return (200, {"errno": 0, "data": {"jsToken": js}})
-
-
-def sign_payload(errno=0, signed_today=True, continuous=3):
-    data = {"continuous": continuous}
-    if signed_today is not None:
-        data["signed_today"] = signed_today
-    return (200, {"errno": errno, "data": data})
+def sign_payload(errno=0, message=""):
+    return (200, {
+        "errno": errno,
+        "show_msg": message,
+        "data": {},
+    })
 
 
 class ThirtyDayContractTests(unittest.TestCase):
-    def test_success_requires_errno_zero_and_signed_today_true(self):
+    def test_success_requires_homepage_readback_true(self):
         client = FakeHttp([
-            conf_payload(),
+            userreport_payload(),
             home_payload(),
-            token_payload(),
             sign_payload(),
+            home_payload(signed_today=True, continuous=3),
         ])
-        with mock.patch.object(KD, "http", client):
+        with mock.patch.object(KD, "http", client), \
+                mock.patch.object(
+                    KD, "exchange_stoken", return_value="business-token"), \
+                mock.patch.object(KD.time, "sleep"):
             ok, message = KD.checkin_thirty_days(
                 "BDUSS-test", "web-token", [], ptoken="ptoken-value")
 
         self.assertTrue(ok)
-        self.assertIn("+10 积分", message)
+        self.assertIn("签到成功", message)
+        self.assertIn("连续 3 天", message)
         self.assertEqual(
-            ["GET", "GET", "GET", "POST"],
+            ["GET", "POST", "POST", "POST"],
             [call["method"] for call in client.calls],
         )
-        self.assertEqual(KD.ACTIVITY_CONF_URL, client.calls[0]["url"])
+        self.assertEqual(KD.USERREPORT_URL, client.calls[0]["url"])
         self.assertTrue(client.calls[1]["url"].startswith(KD.ACTIVITY_HOME_URL + "?"))
-        self.assertEqual(KD.ACTIVITY_TOKEN_URL, client.calls[2]["url"])
-        self.assertTrue(client.calls[3]["url"].startswith(KD.ACTIVITY_SIGN_URL + "?"))
-        for call in client.calls:
-            self.assertEqual(KD.ACTIVITY_REFERER, call["headers"]["Referer"])
-            self.assertIn("STOKEN=web-token", call["headers"]["Cookie"])
+        self.assertTrue(client.calls[2]["url"].startswith(KD.ACTIVITY_SIGN_URL + "?"))
+        self.assertTrue(client.calls[3]["url"].startswith(KD.ACTIVITY_HOME_URL + "?"))
+        for call in client.calls[1:]:
+            self.assertEqual(KD.BASE_URL + "/genflowpro", call["headers"]["Referer"])
+            self.assertEqual(KD.ACT_USER_AGENT, call["headers"]["User-Agent"])
+            self.assertEqual("application/json", call["headers"]["Content-Type"])
+            self.assertEqual(b"{}", call["body"])
+            self.assertIn("STOKEN=business-token", call["headers"]["Cookie"])
             self.assertIn("PTOKEN=ptoken-value", call["headers"]["Cookie"])
+        for call in client.calls[1:]:
+            query = parse_qs(urlsplit(call["url"]).query)
+            self.assertEqual(["123456"], query["uid"])
+            self.assertEqual([KD.SIGNIN30_TID], query["tid"])
+            self.assertNotIn("jsToken", query)
+            self.assertNotIn("aid", query)
+        self.assertFalse(any("/getJsToken" in call["url"] for call in client.calls))
 
-        sign_call = client.calls[-1]
-        query = parse_qs(urlsplit(sign_call["url"]).query)
-        self.assertEqual(["73001"], query["tid"])
-        self.assertEqual(["deadbeef"], query["jsToken"])
-        self.assertEqual(["15459"], query["aid"])
-        self.assertEqual(b"", sign_call["body"])
-
-    def test_errno_zero_without_boolean_true_is_failure(self):
-        for data, label in (
-            ({"continuous": 3}, "missing"),
-            ({"signed_today": False, "continuous": 3}, "false"),
-            ({"signed_today": 1, "continuous": 3}, "non-boolean"),
-        ):
-            with self.subTest(label=label):
+    def test_userreport_accepts_string_and_integer_uk(self):
+        for raw_uk, expected in (("123456", "123456"), (654321, "654321")):
+            with self.subTest(uk=raw_uk):
                 client = FakeHttp([
-                    conf_payload(),
-                    home_payload(),
-                    token_payload(),
-                    (200, {"errno": 0, "data": data}),
+                    userreport_payload(uk=raw_uk),
+                    home_payload(signed_today=True),
                 ])
                 with mock.patch.object(KD, "http", client):
                     ok, message = KD.checkin_thirty_days(
                         "BDUSS-test", "web-token", [])
-                self.assertFalse(ok)
-                self.assertIn("signed_today 不是 true", message)
+                self.assertTrue(ok)
+                self.assertIn("今日已签到", message)
+                query = parse_qs(urlsplit(client.calls[1]["url"]).query)
+                self.assertEqual([expected], query["uid"])
 
     def test_homepage_signed_today_is_neutral_without_token_request(self):
         client = FakeHttp([
-            conf_payload(),
-            home_payload(signed_today=True, continuous=7, total=9),
+            userreport_payload(),
+            home_payload(signed_today=True, continuous=7),
         ])
         with mock.patch.object(KD, "http", client):
             ok, message = KD.checkin_thirty_days(
@@ -114,61 +118,119 @@ class ThirtyDayContractTests(unittest.TestCase):
         self.assertEqual(2, len(client.calls))
         self.assertFalse(any("/getJsToken" in call["url"] for call in client.calls))
 
-    def test_10152_is_neutral_completion(self):
+    def test_10152_cannot_override_false_readback(self):
         client = FakeHttp([
-            conf_payload(),
+            userreport_payload(),
             home_payload(),
-            token_payload(),
-            sign_payload(errno=10152, signed_today=None, continuous=4),
+            sign_payload(errno=10152, message="already signed"),
+            home_payload(signed_today=False),
         ])
-        with mock.patch.object(KD, "http", client):
+        with mock.patch.object(KD, "http", client), \
+                mock.patch.object(KD.time, "sleep"):
             ok, message = KD.checkin_thirty_days(
                 "BDUSS-test", "web-token", [])
 
-        self.assertTrue(ok)
-        self.assertIn("errno=10152", message)
+        self.assertFalse(ok)
+        self.assertIn("10152", message)
+        self.assertIn("签到未生效", message)
 
-    def test_8001_and_8002_are_risk_failures(self):
-        for errno in (8001, 8002):
-            with self.subTest(errno=errno):
-                client = FakeHttp([
-                    conf_payload(),
-                    home_payload(),
-                    token_payload(),
-                    sign_payload(errno=errno, signed_today=None),
-                ])
-                with mock.patch.object(KD, "http", client):
-                    ok, message = KD.checkin_thirty_days(
-                        "BDUSS-test", "web-token", [])
-                self.assertFalse(ok)
-                self.assertIn("风控", message)
-                self.assertIn(str(errno), message)
+    def test_8001_is_failure_when_readback_stays_false(self):
+        client = FakeHttp([
+            userreport_payload(),
+            home_payload(),
+            sign_payload(errno=8001, message="账号异常，无法参与活动"),
+            home_payload(signed_today=False),
+        ])
+        with mock.patch.object(KD, "http", client), \
+                mock.patch.object(KD.time, "sleep"):
+            ok, message = KD.checkin_thirty_days(
+                "BDUSS-test", "web-token", [])
 
-    def test_config_failure_does_not_call_legacy_freepoint(self):
+        self.assertFalse(ok)
+        self.assertIn("8001", message)
+        self.assertIn("账号异常，无法参与活动", message)
+        self.assertNotIn("今日已签到", message)
+
+    def test_userreport_failure_does_not_call_legacy_freepoint(self):
         client = FakeHttp([
             (200, {"errno": -6, "show_msg": "login required"}),
         ])
         with mock.patch.object(KD, "http", client):
             ok, message = KD.checkin_one(
-                "acct", "BDUSS-test", "ptoken", "web-token", None, [])
+                "acct", "BDUSS-test", "", "web-token", None, [])
 
         self.assertFalse(ok)
         self.assertIn("errno=-6", message)
         self.assertEqual(1, len(client.calls))
-        self.assertIn("PTOKEN=ptoken", client.calls[0]["headers"]["Cookie"])
         self.assertIn("STOKEN=web-token", client.calls[0]["headers"]["Cookie"])
-        self.assertFalse(any("/api/genflowpro" in call["url"] for call in client.calls))
+        self.assertFalse(any("/freepoint/" in call["url"] for call in client.calls))
 
-    def test_missing_web_stoken_fails_without_http(self):
+    def test_missing_token_fails_without_http(self):
         client = FakeHttp([])
         with mock.patch.object(KD, "http", client):
             ok, message = KD.checkin_one(
-                "acct", "BDUSS-test", "ptoken", "", None, [])
+                "acct", "BDUSS-test", "", "", None, [])
 
         self.assertFalse(ok)
-        self.assertIn("重新导出完整 Cookie", message)
-        self.assertIn("KUKU_STOKEN", message)
+        self.assertIn("缺少可用会话令牌", message)
         self.assertEqual([], client.calls)
+
+    def test_exchange_failure_is_explicit_without_http(self):
+        client = FakeHttp([])
+        with mock.patch.object(KD, "http", client), \
+                mock.patch.object(
+                    KD, "exchange_stoken",
+                    side_effect=RuntimeError("exchange rejected")):
+            ok, message = KD.checkin_thirty_days(
+                "BDUSS-test", "web-token", [], ptoken="ptoken-value")
+
+        self.assertFalse(ok)
+        self.assertIn("exchange rejected", message)
+        self.assertEqual([], client.calls)
+
+    def test_missing_uk_stops_before_activity_request(self):
+        client = FakeHttp([
+            (200, {
+                "errno": 0,
+                "data": {"bdstoken": "dummy-bdstoken", "uinfo": "dummy"},
+            }),
+        ])
+        with mock.patch.object(KD, "http", client):
+            ok, message = KD.checkin_thirty_days(
+                "BDUSS-test", "web-token", [])
+
+        self.assertFalse(ok)
+        self.assertIn("缺少 uk", message)
+        self.assertEqual(1, len(client.calls))
+
+    def test_missing_bdstoken_stops_before_activity_request(self):
+        client = FakeHttp([
+            (200, {
+                "errno": 0,
+                "data": {"uk": "123456", "uinfo": "dummy"},
+            }),
+        ])
+        with mock.patch.object(KD, "http", client):
+            ok, message = KD.checkin_thirty_days(
+                "BDUSS-test", "web-token", [])
+
+        self.assertFalse(ok)
+        self.assertIn("缺少 bdstoken", message)
+        self.assertEqual(1, len(client.calls))
+
+    def test_homepage_outer_errno_fails_before_signin(self):
+        client = FakeHttp([
+            userreport_payload(),
+            (200, {"errno": 8001, "show_msg": "账号异常"}),
+        ])
+        with mock.patch.object(KD, "http", client):
+            ok, message = KD.checkin_thirty_days(
+                "BDUSS-test", "web-token", [])
+
+        self.assertFalse(ok)
+        self.assertIn("签到面板不可读", message)
+        self.assertIn("8001", message)
+        self.assertEqual(2, len(client.calls))
 
     def test_legacy_freepoint_uses_business_stoken_only(self):
         captured = {}
@@ -195,19 +257,6 @@ class ThirtyDayContractTests(unittest.TestCase):
         self.assertIn("PTOKEN=ptoken-value", cookie)
         self.assertIn("BAIDUID=baiduid-value", cookie)
         self.assertIn("PANPSC=panpsc-value", cookie)
-
-    def test_activity_config_accepts_numeric_tid_and_string_point(self):
-        value = {
-            "data": [
-                {"conf_value": {"activityTid": 73002, "signPoint": "15"}},
-            ]
-        }
-        self.assertEqual(("73002", 15), KD.activity_config(value))
-
-    def test_js_token_is_percent_decoded_without_execution(self):
-        raw = quote('function fn(a){return a};fn("A1B2C3")')
-        self.assertEqual("A1B2C3", KD.extract_js_token(raw))
-
 
 class CliAndCompatibilityTests(unittest.TestCase):
     def accounts(self):
@@ -267,6 +316,9 @@ class CliAndCompatibilityTests(unittest.TestCase):
                     KD.sys, "argv", ["kuku_daily.py"]))
                 stack.enter_context(mock.patch.object(KD, "http", client))
                 stack.enter_context(mock.patch.object(
+                    KD, "exchange_stoken",
+                    side_effect=RuntimeError("exchange rejected")))
+                stack.enter_context(mock.patch.object(
                     KD, "proxy_opener", return_value=None))
                 stack.enter_context(mock.patch.object(KD, "log"))
                 notify = stack.enter_context(mock.patch.object(KD, "notify"))
@@ -274,7 +326,7 @@ class CliAndCompatibilityTests(unittest.TestCase):
 
         self.assertEqual(1, code)
         self.assertEqual([], client.calls)
-        self.assertIn("网页 Cookie 缺少 STOKEN", notify.call_args.args[0])
+        self.assertIn("exchange rejected", notify.call_args.args[0])
 
     def test_multiple_accounts_are_kept_in_notification_summary(self):
         accounts = [
@@ -341,16 +393,21 @@ class CliAndCompatibilityTests(unittest.TestCase):
                 self.assertIn(("PANPSC", "panpsc-%s" % marker), item["extras"])
 
             responses = [
-                conf_payload(),
+                userreport_payload(),
                 home_payload(),
-                token_payload(),
                 sign_payload(),
+                home_payload(signed_today=True),
             ] * 2
             client = FakeHttp(responses)
             with ExitStack() as stack:
                 stack.enter_context(mock.patch.object(
                     KD.sys, "argv", ["kuku_daily.py"]))
                 stack.enter_context(mock.patch.object(KD, "http", client))
+                stack.enter_context(mock.patch.object(
+                    KD, "exchange_stoken",
+                    side_effect=lambda bduss, ptoken, opener: (
+                        "exchanged-a" if ptoken == "ptoken-a" else "exchanged-b")))
+                stack.enter_context(mock.patch.object(KD.time, "sleep"))
                 stack.enter_context(mock.patch.object(
                     KD, "proxy_opener", return_value=None))
                 stack.enter_context(mock.patch.object(KD, "log"))
@@ -360,16 +417,16 @@ class CliAndCompatibilityTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual(8, len(client.calls))
         for group, marker, business in (
-            (client.calls[:4], "a", "business-a"),
-            (client.calls[4:], "b", "business-b"),
+            (client.calls[:4], "a", "exchanged-a"),
+            (client.calls[4:], "b", "exchanged-b"),
         ):
             for call in group:
                 cookie = call["headers"]["Cookie"]
-                self.assertIn("STOKEN=web-%s" % marker, cookie)
+                self.assertIn("STOKEN=%s" % business, cookie)
                 self.assertIn("PTOKEN=ptoken-%s" % marker, cookie)
                 self.assertIn("BAIDUID=baiduid-%s" % marker, cookie)
                 self.assertIn("PANPSC=panpsc-%s" % marker, cookie)
-                self.assertNotIn(business, cookie)
+                self.assertNotIn("STOKEN=web-%s" % marker, cookie)
                 self.assertNotIn("global-business-must-not-be-used", cookie)
 
     def test_multi_account_line_format_preserves_extras(self):
@@ -416,8 +473,8 @@ class CliAndCompatibilityTests(unittest.TestCase):
             KD.parse_cookie(raw),
         )
 
-    def test_version_is_1_3_0(self):
-        self.assertEqual("1.3.0", KD.VERSION)
+    def test_version_is_1_4_0(self):
+        self.assertEqual("1.4.0", KD.VERSION)
 
     def test_cookie_rows_to_header_keeps_login_extras(self):
         rows = [
@@ -438,7 +495,7 @@ class CliAndCompatibilityTests(unittest.TestCase):
 
 
 class DocumentationContractTests(unittest.TestCase):
-    def test_six_language_docs_use_30_day_main_flow(self):
+    def test_six_language_docs_use_kukuai30_main_flow(self):
         files = [
             ROOT / "README.md",
             ROOT / "docs" / "README.en.md",
@@ -450,19 +507,20 @@ class DocumentationContractTests(unittest.TestCase):
         for path in files:
             with self.subTest(path=path.name):
                 text = path.read_text(encoding="utf-8")
-                self.assertIn("v1.3.0", text)
+                self.assertIn("v1.4.0", text)
                 self.assertIn("--legacy-freepoint", text)
-                self.assertIn("30", text)
+                self.assertIn("kukuai30", text)
 
     def test_protocol_documents_strict_contract(self):
         text = (ROOT / "docs" / "PROTOCOL.md").read_text(encoding="utf-8")
-        self.assertIn("v1.3.0", text)
-        self.assertIn("3055f416841c1393ec04294a702603fd41e840aa", text)
-        self.assertIn("aid=15459", text)
-        self.assertIn("data.signed_today is true", text)
-        self.assertIn("errno=10152", text)
+        self.assertIn("v1.4.0", text)
+        self.assertIn("5d2b55bc59d9dc5da214d2bff4c09e5679d77414", text)
+        self.assertIn("uid=<uk>", text)
+        self.assertIn("tid=291651792210", text)
+        self.assertIn("signed_today", text)
+        self.assertNotIn("/operation/activitys/api/getJsToken", text)
+        self.assertNotIn("jsToken=<", text)
         self.assertIn("errno=8001", text)
-        self.assertIn("errno=8002", text)
 
 
 if __name__ == "__main__":
