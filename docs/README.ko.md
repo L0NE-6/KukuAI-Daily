@@ -49,7 +49,7 @@ KUKU_COOKIES=BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...
 | 체크인 후 `signed_today=true` | 이번 체크인 성공 |
 | 체크인 후에도 `false` | 실패, action 응답의 이유 표시 |
 | action이 `10152`여도 재조회가 false | 실패 |
-| action이 `8001` | 서버 거부 사유를 그대로 표시 |
+| action이 `8001` / `8002` | 서버 거부 사유를 표시하고 공식 클라이언트에서 먼저 체크인하도록 안내 |
 | `uk`, `data`, 응답 형식이 잘못됨 | 실패 |
 
 HTTP 200, action `errno=0`, `errno=10152`만으로는 성공이 아닙니다.
@@ -70,7 +70,7 @@ ruff check .
 
 ## 버전
 
-- 저장소 버전: `v1.4.0`
+- 저장소 버전: `v1.4.1`
 - 변경 기록: [CHANGELOG.md](../CHANGELOG.md)
 
 이 프로젝트는 개인 자동화용입니다. 관련 서비스 약관을 확인하고 사용 위험은 사용자 본인이 부담합니다.

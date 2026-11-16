@@ -49,7 +49,7 @@ KUKU_COOKIES=BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...
 | 签到後 `signed_today=true` | 今回の签到成功 |
 | 签到後も `false` | 失敗。action のエラー理由を表示 |
 | action が `10152` でも再読取が false | 失敗 |
-| action が `8001` | サーバーの拒否理由をそのまま表示 |
+| action が `8001` / `8002` | サーバーの拒否理由を表示し、まず公式クライアントでの签到を案内 |
 | `uk`、`data`、レスポンス形式が不正 | 失敗 |
 
 HTTP 200、action の `errno=0`、`errno=10152` だけでは成功になりません。
@@ -70,7 +70,7 @@ ruff check .
 
 ## バージョン
 
-- リポジトリ版：`v1.4.0`
+- リポジトリ版：`v1.4.1`
 - 変更履歴：[CHANGELOG.md](../CHANGELOG.md)
 
 本プロジェクトは個人自動化向けです。関連サービスの規約を確認し、自己責任で使用してください。

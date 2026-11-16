@@ -149,7 +149,26 @@ class ThirtyDayContractTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("8001", message)
         self.assertIn("账号异常，无法参与活动", message)
+        self.assertIn("活动侧风控", message)
+        self.assertIn("官方客户端", message)
         self.assertNotIn("今日已签到", message)
+
+    def test_8002_failure_includes_actionable_hint(self):
+        client = FakeHttp([
+            userreport_payload(),
+            home_payload(),
+            sign_payload(errno=8002, message="activity blocked"),
+            home_payload(signed_today=False),
+        ])
+        with mock.patch.object(KD, "http", client), \
+                mock.patch.object(KD.time, "sleep"):
+            ok, message = KD.checkin_thirty_days(
+                "BDUSS-test", "web-token", [])
+
+        self.assertFalse(ok)
+        self.assertIn("8002", message)
+        self.assertIn("活动侧风控", message)
+        self.assertIn("官方客户端", message)
 
     def test_userreport_failure_does_not_call_legacy_freepoint(self):
         client = FakeHttp([
@@ -473,8 +492,8 @@ class CliAndCompatibilityTests(unittest.TestCase):
             KD.parse_cookie(raw),
         )
 
-    def test_version_is_1_4_0(self):
-        self.assertEqual("1.4.0", KD.VERSION)
+    def test_version_is_1_4_1(self):
+        self.assertEqual("1.4.1", KD.VERSION)
 
     def test_cookie_rows_to_header_keeps_login_extras(self):
         rows = [
@@ -507,13 +526,13 @@ class DocumentationContractTests(unittest.TestCase):
         for path in files:
             with self.subTest(path=path.name):
                 text = path.read_text(encoding="utf-8")
-                self.assertIn("v1.4.0", text)
+                self.assertIn("v1.4.1", text)
                 self.assertIn("--legacy-freepoint", text)
                 self.assertIn("kukuai30", text)
 
     def test_protocol_documents_strict_contract(self):
         text = (ROOT / "docs" / "PROTOCOL.md").read_text(encoding="utf-8")
-        self.assertIn("v1.4.0", text)
+        self.assertIn("v1.4.1", text)
         self.assertIn("5d2b55bc59d9dc5da214d2bff4c09e5679d77414", text)
         self.assertIn("uid=<uk>", text)
         self.assertIn("tid=291651792210", text)

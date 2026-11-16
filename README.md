@@ -6,7 +6,7 @@
 
 **库库 AI（百度文库 GenFlowPro）现行 `kukuai30` 每日签到单文件脚本，支持多账号、青龙与 GitHub Actions。**
 
-> 当前版本：**v1.4.0**（2026-11-07） · 最新更新：新增 userreport 会话身份与 bdstoken 登录态校验
+> 当前版本：**v1.4.1**（2026-11-16） · 最新更新：8001 / 8002 风控失败增加可操作恢复提示
 
 [简体中文](README.md) · [English](docs/README.en.md) · [繁體中文](docs/README.zh-Hant.md) · [日本語](docs/README.ja.md) · [한국어](docs/README.ko.md) · [Português (BR)](docs/README.pt-BR.md)
 
@@ -146,7 +146,7 @@ GitHub Actions Secrets：
 | signin 后 homepage `signed_today=true` | 本次签到成功。 |
 | signin 后 homepage `signed_today=false` | 失败；保留动作响应中的 `errno / errmsg`。 |
 | 动作返回 `errno=10152` 但复读仍为 false | 失败，不再把 `10152` 直接当已签。 |
-| 动作返回 `errno=8001` | 如实显示服务端拒绝原因。 |
+| 动作返回 `errno=8001` / `8002` | 如实显示服务端拒绝原因，并提示先尝试官方客户端签到。 |
 | homepage 缺 `uk`、缺 `data` 或响应异常 | 失败，不发送后续无效请求。 |
 
 只要至少一个账号得到成功或中性完成，主进程通常返回 `0`；全部账号失败时返回非零，便于青龙和 Actions 识别。
@@ -182,7 +182,7 @@ python -m py_compile kuku_daily.py kuku_get_cookie.py tests\_loader.py tests\tes
 ruff check .
 ```
 
-测试全部使用假响应，不访问真实签到接口。覆盖 `userreport → homepage → signin → homepage` 主链路、字符串/整数 `uk`、缺 `uk` 短路、签到后复读、`10152` 不得覆盖复读、`8001` 拒绝原因、旧链路显式开关、多账号 Cookie/Extras、脱敏和通知汇总。
+测试全部使用假响应，不访问真实签到接口。覆盖 `userreport → homepage → signin → homepage` 主链路、字符串/整数 `uk`、缺 `uk` 短路、签到后复读、`10152` 不得覆盖复读、`8001` / `8002` 风控提示、旧链路显式开关、多账号 Cookie/Extras、脱敏和通知汇总。
 
 协议证据与字段说明见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
 
@@ -195,7 +195,7 @@ ruff check .
 
 ## 📦 版本与发布
 
-- 当前仓库版本：`v1.4.0`。
+- 当前仓库版本：`v1.4.1`。
 - Release 状态：由主线程统一发布，本文档不宣称已经上线。
 - Release 页：[L0NE-6/KukuAI-Daily Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)。
 - 更新记录：[CHANGELOG.md](CHANGELOG.md)。

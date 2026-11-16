@@ -51,7 +51,7 @@ try:
 except Exception:
     pass
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 BASE_URL = "https://kuku.baidu.com"
 PASSPORT_AUTH_URL = "https://passport.baidu.com/v3/login/api/auth"
 WEB_QUERY = ("clienttype=400&app_id=123971023&web=1&channel=chunlei&version=1.4.4")
@@ -514,6 +514,12 @@ def checkin_thirty_days(bduss, web_stoken, extras=None, opener=None, ptoken=""):
             reason = "errno=%s" % action_errno
             if action_message:
                 reason += "：" + action_message
+            if action_errno in (8001, 8002):
+                reason += (
+                    "；这是活动侧风控拒绝服务端代签，重试通常无效。"
+                    "若官方客户端可以签到，请先在客户端完成当天签到；"
+                    "若客户端同样失败，请保留该 errno 与脱敏日志。"
+                )
         elif action_status != 200:
             reason = "http=%s" % action_status
         else:

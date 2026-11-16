@@ -49,7 +49,7 @@ Quando `PTOKEN` existe, o script troca por um STOKEN de negócio `genflowpro`. F
 | `signed_today=true` após o signin | Check-in concluído |
 | Continua `false` após o signin | Falha; mostra o motivo da ação |
 | Ação retorna `10152`, mas a leitura segue false | Falha |
-| Ação retorna `8001` | Mostra a rejeição do servidor |
+| Ação retorna `8001` / `8002` | Mostra a rejeição do servidor e orienta tentar o check-in pelo cliente oficial primeiro |
 | `uk`, `data` ou formato inválido | Falha |
 
 HTTP 200, `errno=0` da ação e `errno=10152` não bastam para confirmar sucesso.
@@ -70,7 +70,7 @@ Nunca publique Cookies completos, STOKEN, `.kuku_stoken.json`, exportações de 
 
 ## Versão
 
-- Versão do repositório: `v1.4.0`
+- Versão do repositório: `v1.4.1`
 - Histórico: [CHANGELOG.md](../CHANGELOG.md)
 
 Este projeto é destinado à automação pessoal. Siga os termos aplicáveis e use por sua conta e risco.

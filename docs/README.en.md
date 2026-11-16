@@ -51,7 +51,7 @@ When `PTOKEN` is present, the script exchanges it for a `genflowpro` business ST
 | `signed_today=true` after sign-in | Successful check-in |
 | `signed_today=false` after sign-in | Failure; show the action response reason |
 | Action returns `errno=10152` but readback stays false | Failure |
-| Action returns `errno=8001` | Show the server rejection reason |
+| Action returns `errno=8001` / `8002` | Show the server rejection and advise trying official-client check-in first |
 | Missing `uk`, `data`, or malformed response | Failure |
 
 HTTP 200 and action `errno=0` are not enough. The post-action homepage readback is authoritative.
@@ -83,7 +83,7 @@ Never publish full Cookies, STOKEN values, `.kuku_stoken.json`, account exports,
 
 ## Version
 
-- Repository version: `v1.4.0`
+- Repository version: `v1.4.1`
 - Changelog: [CHANGELOG.md](../CHANGELOG.md)
 
 This project is intended for personal automation. Follow the applicable service terms and use it at your own risk.
