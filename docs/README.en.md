@@ -4,6 +4,8 @@
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
+**Current version:** v1.4.1
+
 ## Overview
 
 The default flow reads the session identity, checks the current panel, sends one sign-in action only when needed, then reads the panel again. The final `signed_today=true` readback is the only success criterion.

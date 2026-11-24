@@ -4,6 +4,8 @@
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
+**현재 버전:** v1.4.1
+
 ## 개요
 
 기본 흐름은 세션 신원을 읽고 체크인 패널을 확인합니다. 아직 체크인하지 않은 경우에만 signin을 한 번 전송하고, 대기 후 패널을 다시 읽습니다. 유일한 성공 기준은 체크인 후 패널의 `signed_today=true`입니다.

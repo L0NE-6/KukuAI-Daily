@@ -4,6 +4,8 @@
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
+**Versão atual:** v1.4.1
+
 ## Visão geral
 
 O fluxo padrão lê a identidade da sessão, consulta o painel e envia uma única ação de signin somente quando necessário. Depois ele lê o painel novamente. O único critério de sucesso é `signed_today=true` na leitura posterior.

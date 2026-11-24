@@ -3,12 +3,9 @@
 ## 基线
 
 - 本项目版本：`v1.4.1`
-- 上游仓库：`watchern/Agent2Providers`
-- 上游 release：`v3.4.2.1`
-- 上游 commit：`5d2b55bc59d9dc5da214d2bff4c09e5679d77414`
-- `8001` 复测依据：`b030fdb6f976`（2026-11-08，客户端 UA 已对齐仍被活动侧风控拒绝）
-- 证据文件：`crates/providers/src/providers/kuku/{tasks,credentials,session}.rs`
-- 使用方式：只读取公开 HTTP 契约与字段语义；本项目为独立 Python 实现。
+- 当前活动：`kukuai30`
+- `8001` 复测口径：客户端 UA 已对齐时，活动侧仍可能返回风控拒绝
+- 协议范围：公开 HTTP 路径、请求头、字段语义与服务端复读条件
 
 ## 现行链路
 

@@ -4,51 +4,73 @@
 
 # 🧩 KukuAI Daily
 
-**库库 AI（百度文库 GenFlowPro）现行 `kukuai30` 每日签到单文件脚本，支持多账号、青龙与 GitHub Actions。**
+**库库 AI（百度文库 GenFlowPro）现行 `kukuai30` 每日签到，单文件、多账号、服务端复读与显式旧链路开关。**
 
-> 当前版本：**v1.4.1**（2026-11-16） · 最新更新：8001 / 8002 风控失败增加可操作恢复提示
+> 当前版本：**v1.4.1**（2026-11-16） · 核心能力：userreport → homepage → signin → homepage、STOKEN 换发、风控错误说明
 
 [简体中文](README.md) · [English](docs/README.en.md) · [繁體中文](docs/README.zh-Hant.md) · [日本語](docs/README.ja.md) · [한국어](docs/README.ko.md) · [Português (BR)](docs/README.pt-BR.md)
 
-<img src="https://img.shields.io/github/v/release/L0NE-6/KukuAI-Daily?style=for-the-badge&label=Release&color=2ea44f&logo=github" />
-<img src="https://img.shields.io/github/stars/L0NE-6/KukuAI-Daily?style=for-the-badge&label=Stars&color=FFC75F&logo=github" />
-<img src="https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/%E9%9D%92%E9%BE%99-Qinglong-4EAA25?style=for-the-badge" />
-<img src="https://img.shields.io/badge/GitHub%20Actions-Supported-2088FF?style=for-the-badge&logo=githubactions&logoColor=white" />
-<img src="https://img.shields.io/badge/License-MIT-F472B6?style=for-the-badge" />
+<img src="https://img.shields.io/github/v/release/L0NE-6/KukuAI-Daily?style=for-the-badge&label=Release&color=2ea44f&logo=github" alt="Release" />
+<img src="https://img.shields.io/github/stars/L0NE-6/KukuAI-Daily?style=for-the-badge&label=Stars&color=FFC75F&logo=github" alt="Stars" />
+<img src="https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+<img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20Qinglong-4EAA25?style=for-the-badge&logo=linux&logoColor=white" alt="Platform" />
+<img src="https://img.shields.io/github/license/L0NE-6/KukuAI-Daily?style=for-the-badge&label=License&color=F472B6" alt="License" />
+<a href="https://github.com/L0NE-6/KukuAI-Daily/releases"><img src="https://img.shields.io/badge/Download-Releases-2ea44f?style=for-the-badge&logo=github" alt="Download" /></a>
 
-[✨ 快速概览](#quick-overview) · [🔁 签到流程](#flow) · [🔑 凭据格式](#credentials) · [🚀 部署](#deploy) · [✅ 成功判据](#result) · [🧪 验证](#verify) · [✦ 星轨](#star-trail)
+[🚫 使用边界](#usage-policy) · [✨ 30 秒速览](#overview) · [🧭 这是什么](#what-is-this) · [🔁 协议](#protocol) · [🔑 凭据](#credentials) · [🚀 本地](#local) · [🐧 青龙](#qinglong) · [☁️ Actions](#actions) · [⌨️ CLI](#cli-output) · [🧾 结果码](#result-codes) · [✅ 成功判据](#success) · [🧪 测试](#tests) · [🧱 设计原则](#design) · [🔒 隐私](#privacy) · [📁 目录](#layout) · [📦 版本](#release) · [⚠️ 免责声明](#disclaimer) · [☕ 赞赏](#donate) · [💬 反馈与 Star](#feedback)
 
 </div>
 
 ---
 
-<a id="policy"></a>
+<a id="usage-policy"></a>
 ## 🚫 使用边界与转载声明
 
 > [!IMPORTANT]
-> 官方版本永久免费。未经作者书面许可，禁止付费包装、搬运引流、冒充作者，或使用作者身份与二维码制造官方授权假象。完整规则见 [NOTICE.md](NOTICE.md)。
+> **官方版本永久免费。** 未经作者书面许可，禁止付费包装、搬运引流、冒充作者，或使用作者身份与二维码制造官方授权假象。
 
-本项目仓库、脚本、部署说明和 Release 始终免费公开。未经作者明确书面许可，禁止将本项目包装为付费资源、内部版、独家版、会员权益、收费课程、付费部署或包更新服务；禁止删除作者与版权信息后冒充原创；禁止使用作者昵称、头像、二维码和项目名称制造官方授权假象。
+本项目仓库、脚本、部署说明和 Release 下载始终免费公开。未经作者明确书面许可，禁止将其包装为付费资源、内部版、独家版、会员权益、收费课程、付费部署或包更新服务；禁止搬运到其他账号、群组、频道、网盘、电商或付费平台进行涨粉、截流、倒卖和引流。
+
+如需商业合作、品牌授权、联合分发或使用作者名义提供付费服务，请先取得作者明确书面授权。完整规则见 [NOTICE.md](NOTICE.md)。
 
 ---
 
-<a id="quick-overview"></a>
-## ✨ 快速概览
+<a id="overview"></a>
+## ✨ 30 秒速览
 
 | 维度 | 说明 |
 | :--- | :--- |
-| **主用途** | 执行库库 AI 客户端同款 `kukuai30` 每日签到。 |
-| **默认链路** | `userreport` 获取 `uk` → homepage 预读 → 按需 signin → homepage 复读。 |
-| **输入** | 单账号 `KUKU_COOKIES`，或多账号 `KUKU_TOKENS`。 |
-| **成功判据** | 签到后 homepage 复读的 `signed_today` 必须为布尔 `true`。 |
-| **中性状态** | 签到前 homepage 已显示 `signed_today=true`，不重复提交。 |
-| **失败状态** | 动作响应 `errno=8001` 等拒绝原因会如实显示；复读未签仍算失败。 |
-| **旧链路** | 仅 `--legacy-freepoint` 显式启用，不自动回退。 |
+| **做什么** | 执行库库 AI 客户端同款 `kukuai30` 每日签到。 |
+| **输入** | `KUKU_COOKIES` 单账号，或 `KUKU_TOKENS` 多账号；完整 Cookie 推荐包含 `BDUSS`、`PTOKEN` 和同会话字段。 |
+| **输出** | 账号结果、`uk` 读取状态、动作 `errno`、签到后 homepage 状态和汇总。 |
+| **部署** | Windows、Linux、青龙面板、GitHub Actions。 |
 | **依赖** | Python 3.8+，仅标准库。 |
+| **成功判据** | 签到后 homepage 复读 `signed_today=true`。 |
 
-<a id="flow"></a>
-## 🔁 默认签到流程
+---
+
+<a id="what-is-this"></a>
+## 🧭 这是什么
+
+默认流程为：
+
+```text
+userreport 获取 uk
+  → homepage 预读
+  → signed_today=true：今日已完成
+  → 否则 signin 一次
+  → 等待 0.9 秒
+  → homepage 复读
+```
+
+旧 freepoint 任务只在显式传入 `--legacy-freepoint` 时执行，默认链路失败不会自动切换。脚本不会把 HTTP 200、动作 `errno=0` 或 `errno=10152` 当成今日签到成功。
+
+---
+
+<a id="protocol"></a>
+## 🔁 协议、工作原理与回读
+
+基址为 `https://kuku.baidu.com`，固定活动 `tid=291651792210`。
 
 ```text
 GET  /api/genflowpro/common/userreport?<client-query>
@@ -57,39 +79,34 @@ POST /act/v2/kukuai30/signin?uid=<uk>&tid=291651792210&<client-query>
 POST /act/v2/kukuai30/homepage?uid=<uk>&tid=291651792210&<client-query>
 ```
 
-`uk` 来自 `userreport.data.uk`。默认流程先读 homepage；已经签到就结束，否则发送一次 signin，等待后再次读取 homepage。请求使用客户端同款 User-Agent 和 `/genflowpro` Referer，POST body 为 `{}`。
+`uk` 来自 `userreport.data.uk`，支持字符串或整数。请求使用客户端同款 User-Agent、`/genflowpro` Referer、Origin 和 JSON 空对象 body。
 
-旧 `getJsToken`、`activityTid` 与 `aid=15459` 链路已退役。HTTP 200、动作响应 `errno=0`、`errno=10152` 都不能单独证明今日签到成功，唯一判据是最后 homepage 复读中的 `signed_today=true`。
+完整 Cookie 存在 `PTOKEN` 时，脚本先通过 `BDUSS + PTOKEN` 换发本次运行使用的 `genflowpro` 业务 STOKEN。换发失败直接终止，不静默沿用旧令牌。完整协议字段见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
+
+---
 
 <a id="credentials"></a>
-## 🔑 凭据模型
+## 🔑 凭据与环境变量
 
-推荐提供同一会话的完整 Cookie。存在 `PTOKEN` 时，脚本会先通过现有换发链路取得 `genflowpro` 业务 STOKEN；换发失败会明确终止，不静默降级。
+| 变量 | 必填 | 说明 |
+| :--- | :---: | :--- |
+| `KUKU_COOKIES` | 单账号 | 完整 Cookie |
+| `KUKU_TOKENS` | 多账号 | JSON 数组或一行一个账号 |
+| `KUKU_STOKEN` | 否 | 只供 `--legacy-freepoint` 与 `--token` |
+| `KUKU_PROXY` | 否 | HTTP(S) 或 SOCKS 代理 |
+| `KUKU_ENGINE_DLL` | 否 | 换发时指定 GenFlow 引擎 DLL |
+| `WORKBUDDY_GENFLOW_ENGINE_DLL` | 兼容 | 引擎 DLL 兼容变量 |
+| `KUKU_NO_NOTIFY` | 否 | `1` 表示关闭通知 |
+| `QYWX_TOKEN` / `WECHAT_WEBHOOK` | 否 | 企业微信 |
+| `PLUSPLUS_TOKEN` | 否 | PushPlus |
 
-| 名称 | 来源 | 用途 |
-| :--- | :--- | :--- |
-| **会话 Cookie** | `BDUSS`、`PTOKEN`、`STOKEN`、`BAIDUID`、`PANPSC` 等 | 用于换发和读取 `userreport.data.uk`。 |
-| **运行期业务 STOKEN** | 由 `BDUSS + PTOKEN` 换发 | 本次 `kukuai30` 请求使用，不打印。 |
-| **旧 freepoint STOKEN** | `KUKU_STOKEN` / 多账号 `business_stoken` | 仅 `--legacy-freepoint` 与 `--token` 使用。 |
-
-> [!IMPORTANT]
-> `KUKU_STOKEN` 不会替代会话 Cookie。完整 Cookie 缺少 `PTOKEN` 时，脚本会使用其中的 `STOKEN` 尝试读取 `userreport`；上游拒绝时会明确报会话错误。
-
-### 单账号
+单账号：
 
 ```text
 KUKU_COOKIES=BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...
 ```
 
-`KUKU_STOKEN` 可选，仅用于旧 freepoint：
-
-```text
-KUKU_STOKEN=<旧freepoint业务STOKEN>
-```
-
-### 多账号
-
-推荐使用 JSON 数组。每条账号把完整 Cookie 放进 `cookie`，旧 freepoint 业务 STOKEN 可单独放进 `business_stoken`：
+多账号 JSON：
 
 ```json
 [
@@ -97,71 +114,24 @@ KUKU_STOKEN=<旧freepoint业务STOKEN>
     "name": "主号",
     "cookie": "BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...",
     "business_stoken": ""
-  },
-  {
-    "name": "副号",
-    "cookie": "BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...",
-    "business_stoken": ""
   }
 ]
 ```
 
-也支持一行一个账号：
+`business_stoken` 不参与默认 `kukuai30` 请求。
 
-```text
-主号|BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...|旧freepoint业务STOKEN（可空）
-副号|BDUSS=...; PTOKEN=...; STOKEN=...; BAIDUID=...; PANPSC=...|旧freepoint业务STOKEN（可空）
+---
+
+<a id="local"></a>
+## 🚀 本地快速开始
+
+```bash
+python kuku_daily.py
+python kuku_daily.py --only 1
+python kuku_daily.py --version
 ```
 
-旧位置格式 `备注|BDUSS|PTOKEN[|业务STOKEN]` 仍可解析；包含 `PTOKEN` 时可参与业务 STOKEN 换发，但缺少其它同会话 Cookie 时稳定性较差，建议重新导出完整 Cookie。
-
-<a id="deploy"></a>
-## 🚀 青龙 / Actions
-
-1. 上传 `kuku_daily.py`，需要更新客户端 Cookie 时同时上传 `kuku_get_cookie.py`。
-2. 单账号配置 `KUKU_COOKIES`；多账号配置 `KUKU_TOKENS`。
-3. 新建定时任务 `task kuku_daily.py`，或运行 `python kuku_daily.py`。
-4. 需要推送时配置企业微信或 PushPlus 变量。
-
-```cron
-15 8 * * *
-```
-
-GitHub Actions Secrets：
-
-| Secret | 必填 | 说明 |
-| :--- | :---: | :--- |
-| `KUKU_COOKIES` | 单账号 | 推荐包含 `BDUSS`、`PTOKEN` 与其它同会话 Cookie。 |
-| `KUKU_TOKENS` | 多账号 | 推荐 JSON 数组；配置后优先于单账号变量。 |
-| `KUKU_STOKEN` | 可选 | 仅单账号旧 freepoint / `--token` 使用。 |
-| `QYWX_TOKEN` | 可选 | 企业微信机器人 key。 |
-| `PLUSPLUS_TOKEN` | 可选 | PushPlus token。 |
-
-<a id="result"></a>
-## ✅ 成功、幂等与退出码
-
-| 上游结果 | 本地处理 |
-| :--- | :--- |
-| 签到前 homepage `signed_today=true` | 中性完成，不再发送 signin。 |
-| signin 后 homepage `signed_today=true` | 本次签到成功。 |
-| signin 后 homepage `signed_today=false` | 失败；保留动作响应中的 `errno / errmsg`。 |
-| 动作返回 `errno=10152` 但复读仍为 false | 失败，不再把 `10152` 直接当已签。 |
-| 动作返回 `errno=8001` / `8002` | 如实显示服务端拒绝原因，并提示先尝试官方客户端签到。 |
-| homepage 缺 `uk`、缺 `data` 或响应异常 | 失败，不发送后续无效请求。 |
-
-只要至少一个账号得到成功或中性完成，主进程通常返回 `0`；全部账号失败时返回非零，便于青龙和 Actions 识别。
-
-## ⌨️ 命令行
-
-| 参数 | 作用 |
-| :--- | :--- |
-| 无 | 运行所有账号的现行 `kukuai30` 签到。 |
-| `--only N` | 只运行第 N 个账号。 |
-| `--legacy-freepoint` | 显式运行旧 freepoint 任务，使用业务 STOKEN。 |
-| `--token` | 换发并输出旧 freepoint 业务 STOKEN，不执行签到。 |
-| `--version` | 输出脚本版本。 |
-
-## 🛠️ 凭据工具
+更新客户端 Cookie：
 
 ```bash
 python kuku_get_cookie.py
@@ -170,70 +140,199 @@ python kuku_get_cookie.py --exchange
 python kuku_get_cookie.py --paste --exchange
 ```
 
-默认签到会自动从 `PTOKEN` 换发本次运行使用的业务 STOKEN。`--exchange` 和 `kuku_get_cookie.py --stoken` 单独打印的 `KUKU_STOKEN` 只供旧 freepoint 使用。工具读取客户端 Cookie 数据库时会保留百度域完整字段，包括 `BAIDUID`、`PTOKEN`、`PANPSC` 等。
+旧 freepoint 只显式运行：
 
-<a id="verify"></a>
-## 🧪 本地验证
-
-```powershell
-python -m unittest discover -s tests -v
-python -m pytest -q
-python -m py_compile kuku_daily.py kuku_get_cookie.py tests\_loader.py tests\test_kuku_contract.py
-ruff check .
+```bash
+python kuku_daily.py --legacy-freepoint
 ```
 
-测试全部使用假响应，不访问真实签到接口。覆盖 `userreport → homepage → signin → homepage` 主链路、字符串/整数 `uk`、缺 `uk` 短路、签到后复读、`10152` 不得覆盖复读、`8001` / `8002` 风控提示、旧链路显式开关、多账号 Cookie/Extras、脱敏和通知汇总。
+---
 
-协议证据与字段说明见 [docs/PROTOCOL.md](docs/PROTOCOL.md)。
+<a id="qinglong"></a>
+## 🐧 青龙面板
 
-## 🔒 隐私
+1. 上传 `kuku_daily.py`。
+2. 需要更新 Cookie 时同时上传 `kuku_get_cookie.py`。
+3. 配置 `KUKU_COOKIES` 或 `KUKU_TOKENS`。
+4. 创建任务：
 
-- 日志只显示脱敏后的 BDUSS 尾部。
+```text
+15 8 * * * task kuku_daily.py
+```
+
+脚本仅使用标准库，无需安装第三方依赖。需要企业微信或 PushPlus 时再配置对应变量。
+
+---
+
+<a id="actions"></a>
+## ☁️ GitHub Actions
+
+工作流位于 [`.github/workflows/daily.yml`](.github/workflows/daily.yml)，当前只启用 `workflow_dispatch`；定时段保持注释，启用时使用 UTC。
+
+| Secret | 必填 | 说明 |
+| :--- | :---: | :--- |
+| `KUKU_COOKIES` | 单账号 | 完整 Cookie |
+| `KUKU_TOKENS` | 多账号 | JSON 数组或一行一个账号 |
+| `KUKU_STOKEN` | 否 | 仅旧 freepoint / `--token` |
+| `QYWX_TOKEN` | 否 | 企业微信 |
+| `PLUSPLUS_TOKEN` | 否 | PushPlus |
+
+工作流使用 Python 3.11，不安装第三方依赖。
+
+---
+
+<a id="cli-output"></a>
+## ⌨️ CLI 与输出
+
+| 参数 | 作用 |
+| :--- | :--- |
+| 无 | 运行所有账号的现行 `kukuai30` 签到 |
+| `--only N` | 只运行第 N 个账号 |
+| `--legacy-freepoint` | 显式运行旧 freepoint 任务 |
+| `--token` | 换发并输出旧 freepoint 业务 STOKEN，不执行签到 |
+| `--version` | 输出版本 |
+
+输出包含脱敏 Cookie 尾部、`uk` 读取、homepage 预读、signin 动作、homepage 复读和账号汇总。
+
+---
+
+<a id="result-codes"></a>
+## 🧾 结果码
+
+| 结果 | 含义 |
+| :--- | :--- |
+| 签到前 `signed_today=true` | 中性完成，不发送 signin |
+| 签到后 `signed_today=true` | 本次签到成功 |
+| 签到后 `signed_today=false` | 失败，保留动作 `errno/errmsg` |
+| `errno=10152` 且复读 false | 失败，不能直接当已签 |
+| `errno=8001/8002` | 活动侧风控拒绝，保留服务端原因 |
+| 缺 `uk`、缺 `data`、HTTP 非 200 | 失败，不发送后续无效请求 |
+| 退出码 `0` | 至少一个账号成功或中性完成 |
+| 退出码 `1` | 配置错误或全部账号失败 |
+
+---
+
+<a id="success"></a>
+## ✅ 成功判据
+
+唯一完成证据是签到后 homepage 的 `signed_today` 为布尔 `true`。
+
+签到前已经是 `true` 时按幂等完成处理，不重复提交。动作响应 `errno=0`、`errno=10152`、HTTP 200 或返回文案都不能覆盖最终 homepage 复读结果。
+
+---
+
+<a id="tests"></a>
+## 🧪 测试
+
+```bash
+python -m unittest discover -s tests -v
+python -m pytest -q
+python -m py_compile kuku_daily.py kuku_get_cookie.py
+ruff check .
+git diff --check
+```
+
+现有 25 项离线测试覆盖主链路、字符串/整数 `uk`、缺 `uk` 短路、签到后复读、`10152` 不覆盖复读、`8001/8002` 提示、旧链路显式开关、多账号 Cookie/Extras、脱敏与通知汇总。全部使用假响应。
+
+---
+
+<a id="design"></a>
+## 🧱 设计原则
+
+- **服务端复读定成败**：动作回执不能单独判定完成。
+- **旧链路显式启用**：默认流程不自动切换。
+- **完整会话优先**：推荐完整 Cookie，换发失败立即报错。
+- **账号隔离**：单账号异常不阻断其他账号。
+- **零第三方依赖**：主脚本只使用 Python 标准库。
+- **最小泄露**：日志只显示脱敏 Cookie 尾部。
+
+---
+
+<a id="privacy"></a>
+## 🔒 隐私与数据边界
+
 - Cookie、会话 STOKEN 与换发结果不从外部服务器收集。
-- `.kuku_stoken.json`、环境变量、完整 Cookie 和多账号导出文件不要提交到仓库、Issue 或公开日志。
-- `--token` 会主动打印业务 STOKEN，只应在可信终端中使用。
+- 日志只显示脱敏后的 BDUSS 尾部。
+- `.kuku_stoken.json`、环境变量、完整 Cookie 和多账号导出文件不要提交。
+- `--token` 会主动打印业务 STOKEN，只应在可信终端使用。
+- 提交 Issue 前移除 Cookie、STOKEN、`uk` 和账号导出内容。
 
+---
+
+<a id="layout"></a>
+## 📁 目录结构
+
+```text
+KukuAI-Daily/
+├── .github/workflows/daily.yml
+├── assets/
+├── docs/
+│   ├── PROTOCOL.md
+│   └── README.*.md
+├── tests/
+├── kuku_daily.py
+├── kuku_get_cookie.py
+├── CHANGELOG.md
+├── LICENSE
+├── NOTICE.md
+├── requirements.txt
+├── ruff.toml
+└── README.md
+```
+
+---
+
+<a id="release"></a>
 ## 📦 版本与发布
 
-- 当前仓库版本：`v1.4.1`。
-- Release 状态：由主线程统一发布，本文档不宣称已经上线。
-- Release 页：[L0NE-6/KukuAI-Daily Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)。
-- 更新记录：[CHANGELOG.md](CHANGELOG.md)。
+- 当前版本：`v1.4.1`。
+- 历史版本保留在 [Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)。
+- 更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
+---
+
+<a id="disclaimer"></a>
 ## ⚠️ 免责声明
 
-本项目用于个人学习与自动化实践。请自行遵守库库 AI、百度文库及相关服务的条款，并承担账号使用风险。
+本项目用于个人学习与合法自动化实践。使用者应自行遵守库库 AI、百度文库及相关服务条款，并承担误配置、凭据泄露或账号异常带来的风险。
 
-<a id="star-trail"></a>
-## ✦ 星轨 Star Trail
+---
 
-<a href="https://star-history.com/#L0NE-6/KukuAI-Daily&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=L0NE-6/KukuAI-Daily&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=L0NE-6/KukuAI-Daily&type=Date&theme=light" />
-    <img alt="KukuAI Daily Star Trail" src="https://api.star-history.com/svg?repos=L0NE-6/KukuAI-Daily&type=Date&theme=light" />
-  </picture>
-</a>
+<a id="donate"></a>
+## ☕ 支持与投喂：微信与支付宝赞赏码
 
-## ☕ 支持与反馈
-
-脚本免费、无广告。Issue 请附脱敏日志、复现步骤和运行环境，不要提交 Cookie、STOKEN 或账号导出文件。
+脚本完全免费，赞赏纯自愿，不影响任何功能。
 
 <p align="center">
   <img src="assets/donate-wechat.png" width="260" alt="微信赞赏码" />
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <img src="assets/donate-alipay.jpg" width="260" alt="支付宝赞赏码" />
 </p>
-<p align="center"><sub>💚 微信支付（左） &nbsp;|&nbsp; 💙 支付宝（右，支持信用卡 / 花呗）</sub></p>
 
-> ⚠️ 收款码仅用于向作者自愿赞赏。任何第三方以代下载、代部署、内部资源或会员群为由收费，均与作者无关，请停止付款并保留证据。
+<p align="center"><sub>微信支付（左） · 支付宝（右）</sub></p>
+
+> [!WARNING]
+> 收款码仅用于向作者自愿赞赏。任何第三方以代下载、代部署、内部资源、会员群或官方授权为由收费，均与作者无关。
 
 ---
 
+<a id="feedback"></a>
+## 💬 反馈与贡献：Star History
+
+- [Issues](https://github.com/L0NE-6/KukuAI-Daily/issues)
+- [Pull Requests](https://github.com/L0NE-6/KukuAI-Daily/pulls)
+- [Releases](https://github.com/L0NE-6/KukuAI-Daily/releases)
+
+<a href="https://star-history.com/#L0NE-6/KukuAI-Daily&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=L0NE-6/KukuAI-Daily&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=L0NE-6/KukuAI-Daily&type=Date&theme=light" />
+    <img alt="KukuAI Daily Star History" src="https://api.star-history.com/svg?repos=L0NE-6/KukuAI-Daily&type=Date&theme=light" />
+  </picture>
+</a>
+
 <div align="center">
-  <a href="https://github.com/L0NE-6/KukuAI-Daily/releases">Releases</a> ·
-  <a href="https://github.com/L0NE-6/KukuAI-Daily/issues">Issues</a> ·
-  <a href="https://github.com/L0NE-6/KukuAI-Daily">Star</a>
-  <br />
-  <sub>L0NE-6 · DAILY SIGNAL · 让每一次运行都留下可验证的信号</sub>
+
+[⭐ Star](https://github.com/L0NE-6/KukuAI-Daily) · [🍴 Fork](https://github.com/L0NE-6/KukuAI-Daily/fork) · L0NE-6 · DAILY SIGNAL
+
 </div>

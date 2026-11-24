@@ -4,6 +4,8 @@
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
+**目前版本：** v1.4.1
+
 ## 概述
 
 預設流程會先讀取會話身份，檢查簽到面板；尚未簽到時只發送一次 signin，等待後再次讀取面板。唯一成功判據是簽到後 `signed_today=true`。

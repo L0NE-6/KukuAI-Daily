@@ -4,6 +4,8 @@
 
 [简体中文](../README.md) | [English](README.en.md) | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Português (BR)](README.pt-BR.md)
 
+**現在のバージョン：** v1.4.1
+
 ## 概要
 
 既定フローはセッション身份を取得し、签到パネルを確認します。未签到の場合だけ signin を 1 回送信し、待機後にパネルを再読取します。唯一の成功条件は、签到後パネルの `signed_today=true` です。
